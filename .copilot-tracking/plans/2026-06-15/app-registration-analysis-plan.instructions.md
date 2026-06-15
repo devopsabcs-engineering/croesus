@@ -51,40 +51,40 @@ Produce the customer-facing analysis that answers whether the Croesus SaaS secon
 
 ## Implementation Checklist
 
-### [ ] Implementation Phase 1: Core Analysis Findings Deliverable
+### [x] Implementation Phase 1: Core Analysis Findings Deliverable
 
 <!-- parallelizable: false -->
 
-* [ ] Step 1.1: Assemble the verified app-registration matrix and per-file verification section
+* [x] Step 1.1: Assemble the verified app-registration matrix and per-file verification section
   * Details: .copilot-tracking/details/2026-06-15/app-registration-analysis-details.md (Lines 12-31)
-* [ ] Step 1.2: Reconcile the dev-dev / prod-dev(=dev-prod) / prod-prod matrix and naming against the intent doc's six dimensions
+* [x] Step 1.2: Reconcile the dev-dev / prod-dev(=dev-prod) / prod-prod matrix and naming against the intent doc's six dimensions
   * Details: .copilot-tracking/details/2026-06-15/app-registration-analysis-details.md (Lines 33-53)
-* [ ] Step 1.3: Write the determination (three separated facts) and the Option A vs Option B recommendation with the sequence diagram
+* [x] Step 1.3: Write the determination (three separated facts) and the Option A vs Option B recommendation with the sequence diagram
   * Details: .copilot-tracking/details/2026-06-15/app-registration-analysis-details.md (Lines 55-76)
 
-### [ ] Implementation Phase 2: Croesus Escalation Packet
+### [x] Implementation Phase 2: Croesus Escalation Packet
 
 <!-- parallelizable: true -->
 
-* [ ] Step 2.1: Draft the vendor escalation packet (exact questions + evidence to request from Croesus)
+* [x] Step 2.1: Draft the vendor escalation packet (exact questions + evidence to request from Croesus)
   * Details: .copilot-tracking/details/2026-06-15/app-registration-analysis-details.md (Lines 82-101)
 
-### [ ] Implementation Phase 3: Gap-Closure Verification Steps
+### [x] Implementation Phase 3: Gap-Closure Verification Steps
 
 <!-- parallelizable: true -->
 
-* [ ] Step 3.1: Author the verification command set (owners, admin-consent, tenant IDs, sign-in logs) with run guidance
+* [x] Step 3.1: Author the verification command set (owners, admin-consent, tenant IDs, sign-in logs) with run guidance
   * Details: .copilot-tracking/details/2026-06-15/app-registration-analysis-details.md (Lines 107-125)
 
-### [ ] Implementation Phase N: Validation
+### [x] Implementation Phase N: Validation
 
 <!-- parallelizable: false -->
 
-* [ ] Step N.1: Run full validation of all deliverable markdown
+* [x] Step N.1: Run full validation of all deliverable markdown
   * Markdown lint on all created files; verify links resolve and no broken internal references
-* [ ] Step N.2: Fix minor validation issues
+* [x] Step N.2: Fix minor validation issues
   * Correct lint warnings and formatting inline
-* [ ] Step N.3: Report blocking issues
+* [x] Step N.3: Report blocking issues
   * Document any issue needing more research (e.g., RMS-unlocked docs) and provide next steps
 
 ## Planning Log

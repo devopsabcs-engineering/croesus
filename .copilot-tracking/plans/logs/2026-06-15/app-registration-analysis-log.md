@@ -70,3 +70,9 @@ Items identified during planning that fall outside current scope.
 * WI-05: Resolve the dev and prod tenant IDs behind the two publisher domains. — Confirms cross-tenant topology in the findings. (low)
   * Source: research naming/tenant reconciliation
   * Dependency: Directory read access.
+
+## Implementation Notes
+
+* All three deliverables created under assets/ (findings report, escalation packet, verification guide) and the changes log written. All plan steps and phases marked complete.
+* DD-02 (lint): Section 3.2 of the findings report was initially numbered 4-8 to read as a continuation of the 3.1 table; markdownlint MD029 requires ordered lists to restart at 1. Renumbered 3.2 to 1-5 and updated the two cross-references in the verification guide (#8 -> #5). No semantic change.
+* Added a new actionable security finding V1 (Token Protection "unbound"/replay risk) and an explicit Step 4 remediation (enforce a token-binding CA control) — derived directly from the screenshot sign-in logs; surfaced as a customer recommendation.
