@@ -1,0 +1,92 @@
+{
+ "id": "a2a7a9ad-8624-43d7-a921-a33d00c05c5b",
+ "deletedDateTime": null,
+ "appId": "e3e358ea-0aae-4f11-b866-00f76b1cf6c1",
+ "applicationTemplateId": null,
+ "disabledByMicrosoftStatus": null,
+ "createdByAppId": "18ed3507-a475-4ccb-b669-d66bc9f2a36e",
+ "createdDateTime": "2025-07-09T20:39:55Z",
+ "displayName": "sp-CentralGPD-UAT-dev-fed",
+ "description": null,
+ "groupMembershipClaims": null,
+ "identifierUris": [],
+ "isDeviceOnlyAuthSupported": null,
+ "isDisabled": null,
+ "isFallbackPublicClient": null,
+ "nativeAuthenticationApisEnabled": null,
+ "notes": null,
+ "publisherDomain": "mvtdesjardins.onmicrosoft.com",
+ "serviceManagementReference": null,
+ "signInAudience": "AzureADMyOrg",
+ "tags": [],
+ "tokenEncryptionKeyId": null,
+ "samlMetadataUrl": null,
+ "defaultRedirectUri": null,
+ "certification": null,
+ "optionalClaims": null,
+ "requestSignatureVerification": null,
+ "addIns": [],
+ "api": {
+  "acceptMappedClaims": true,
+  "knownClientApplications": [],
+  "requestedAccessTokenVersion": null,
+  "oauth2PermissionScopes": [],
+  "preAuthorizedApplications": []
+ },
+ "appRoles": [],
+ "info": {
+  "logoUrl": null,
+  "marketingUrl": null,
+  "privacyStatementUrl": null,
+  "supportUrl": null,
+  "termsOfServiceUrl": null
+ },
+ "keyCredentials": [],
+ "parentalControlSettings": {
+  "countriesBlockedForMinors": [],
+  "legalAgeGroupRule": "Allow"
+ },
+ "passwordCredentials": [],
+ "publicClient": {
+  "redirectUris": []
+ },
+ "requiredResourceAccess": [
+  {
+   "resourceAppId": "00000003-0000-0000-c000-000000000000",
+   "resourceAccess": [
+    {
+     "id": "e1fe6dd8-ba31-4d61-89e7-88639da4683d",
+     "type": "Scope"
+    }
+   ]
+  }
+ ],
+ "verifiedPublisher": {
+  "displayName": null,
+  "verifiedPublisherId": null,
+  "addedDateTime": null
+ },
+ "web": {
+  "homePageUrl": null,
+  "logoutUrl": null,
+  "redirectUris": [],
+  "implicitGrantSettings": {
+   "enableAccessTokenIssuance": false,
+   "enableIdTokenIssuance": false
+  },
+  "redirectUriSettings": []
+ },
+ "servicePrincipalLockConfiguration": {
+  "isEnabled": true,
+  "allProperties": true,
+  "credentialsWithUsageVerify": true,
+  "credentialsWithUsageSign": true,
+  "identifierUris": false,
+  "tokenEncryptionKeyId": true
+ },
+ "spa": {
+  "redirectUris": [
+   "https://pat-gpd-central.certif.desjardins.com/CentralWebApp/LogonSso.aspx"
+  ]
+ }
+}
