@@ -124,7 +124,7 @@ Devices are compliant/managed in the **Prod** tenant (Intune / hybrid join), but
 | Field | Sign-in #1 (interactive) | Sign-in #2 (replay) |
 | --- | --- | --- |
 | IsInteractive | TRUE | FALSE |
-| IP Address | 142.195.80.133 (Desjardins corp) | 3.97.32.113 (Amazon AWS) |
+| IP Address | (Desjardins corp) | 3.97.32.113 (Amazon AWS) |
 | Token Protection status | **bound (code 0)** | **unbound (code 1008)** |
 | Browser | Edge 146.0.0 | (empty) |
 | deviceId | 5b4b24f4-…-4518e81f06c8 | 5b4b24f4-…-4518e81f06c8 (same) |
