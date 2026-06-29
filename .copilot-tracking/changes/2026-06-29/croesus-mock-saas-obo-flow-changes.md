@@ -169,9 +169,36 @@ The CI test user could not satisfy MFA: this tenant enforces multi-factor authen
 * Entra sign-in page renders for the SPA client ID + API scope with no app/consent errors.
 * API at https://croesus-api.azurewebsites.net/api/me returns `401 Unauthorized` with `WWW-Authenticate: Bearer`.
 
+## SPA Redirect URI Fix (AADSTS50011) — 2026-06-29
+
+Interactive sign-in from the deployed SPA failed with `AADSTS50011: The redirect URI 'https://croesus-spa.azurewebsites.net' ... does not match the redirect URIs configured for the application`. The SPA registration only had `https://localhost:3000` as a SPA redirect URI, but MSAL uses `redirectUri: window.location.origin`.
+
+### Modified
+
+* scripts/provision-app-registrations.sh - Added optional `SPA_DEPLOYED_REDIRECT_URI`; the SPA redirect-URI PATCH now registers both the local dev URI and the deployed origin in one authoritative array, and folds in `isFallbackPublicClient: true` (resolves the prior reproducibility gap for the public-client flag).
+* docs/obo-demo-guide.md - Step 1 now passes `SPA_DEPLOYED_REDIRECT_URI` and an IMPORTANT note explains the `window.location.origin` redirect requirement and the `AADSTS50011` failure mode.
+
+### Provisioned (live)
+
+* SPA app registration `06ef7c0a-...` `spa.redirectUris` now `["https://croesus-spa.azurewebsites.net", "https://localhost:3000"]` (Graph PATCH). Verified the authorize endpoint now returns the sign-in prompt instead of `AADSTS50011`.
+
+## API CORS Fix (Failed to fetch) — 2026-06-29
+
+After interactive sign-in succeeded, clicking **Call API** in the SPA failed with `Failed to fetch`. The browser blocked the cross-origin `GET /api/me` because the API had no CORS policy; the request is preflighted (it carries an `Authorization: Bearer` header), so the browser rejected it before the API responded.
+
+### Modified
+
+* api/Program.cs - Added a config-driven CORS policy (`SpaCors`) reading `Cors:AllowedOrigins`, allowing GET + any header from the configured origins, and registered `app.UseCors(...)` ahead of authentication.
+* api/appsettings.json - Added an empty `Cors:AllowedOrigins` array (origins are supplied at runtime, never hard-coded).
+* infra/modules/appservice.bicep - API app now gets `Cors__AllowedOrigins__0 = https://<spa-host>` so full Bicep deploys stay correct.
+
+### Provisioned (live)
+
+* `croesus-api` app setting `Cors__AllowedOrigins__0 = https://croesus-spa.azurewebsites.net` set live (the pipeline deploys code only, not Bicep). API redeployed via run 28408604044 to pick up the `UseCors` middleware.
+
 ### Outstanding (user action)
 
 * Verify the rendered wiki pages and embedded screenshots while signed in to GitHub (the integrated browser is unauthenticated, so it cannot view the private wiki). If a relative image path does not render, replace `![alt](images/<file>.png)` with the GitHub wiki embed `[[images/<file>.png]]`.
-* The live SPA `isFallbackPublicClient=true` change and the `pm2 serve` startup command are applied to the live resources; the startup command is now in Bicep, but `isFallbackPublicClient` is still only live (consider adding it to `scripts/provision-app-registrations.sh` for reproducibility).
+* The `pm2 serve` startup command is now in Bicep; `isFallbackPublicClient=true` and the deployed SPA redirect URI are now both in the provisioning script and applied live.
 * To run the headless ROPC evidence, set repo variable `ENABLE_ROPC_EVIDENCE=true` only in a tenant that permits a dedicated non-MFA CI test user.
 
