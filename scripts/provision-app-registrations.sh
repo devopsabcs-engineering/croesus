@@ -48,6 +48,19 @@ SIGN_IN_AUDIENCE="${SIGN_IN_AUDIENCE:-AzureADMyOrg}"
 
 log() { printf '>>> %s\n' "$*" >&2; }
 
+# Portable UUID generator. Uses uuidgen when present (Linux CI), otherwise falls
+# back to the kernel RNG or PowerShell so the script also runs under Git Bash on
+# Windows. Output is a bare lowercase UUID with any trailing CR stripped.
+gen_uuid() {
+  if command -v uuidgen >/dev/null 2>&1; then
+    uuidgen | tr -d '\r'
+  elif [[ -r /proc/sys/kernel/random/uuid ]]; then
+    tr -d '\r' < /proc/sys/kernel/random/uuid
+  else
+    powershell.exe -NoProfile -Command '[guid]::NewGuid().Guid' | tr -d '\r'
+  fi
+}
+
 # Look up an app registration's appId by display name. Empty string if absent.
 get_app_id_by_name() {
   az ad app list --display-name "$1" --query "[0].appId" -o tsv 2>/dev/null || true
@@ -86,7 +99,7 @@ az ad app update --id "$API_ID" --identifier-uris "api://$API_ID" >/dev/null
 SCOPE_ID="$(az ad app show --id "$API_ID" \
   --query "api.oauth2PermissionScopes[?value=='access_as_user'].id | [0]" -o tsv)"
 if [[ -z "$SCOPE_ID" || "$SCOPE_ID" == "None" ]]; then
-  SCOPE_ID="$(uuidgen)"
+  SCOPE_ID="$(gen_uuid)"
   log "Minting new access_as_user scope id: $SCOPE_ID"
 else
   log "Reusing existing access_as_user scope id: $SCOPE_ID"
@@ -119,6 +132,10 @@ az rest --method PATCH \
 #    (all on the API). PATCH is authoritative so re-runs converge.
 # -----------------------------------------------------------------------------
 log "Configuring exposed scope, knownClientApplications, preAuthorizedApplications on API"
+# Graph validates preAuthorizedApplications.delegatedPermissionIds against the
+# scopes that ALREADY exist on the app, so the scope must be committed first.
+# PATCH the scope (+ knownClientApplications) in one call, then PATCH
+# preAuthorizedApplications referencing the now-existing scope id in a second.
 az rest --method PATCH \
   --uri "https://graph.microsoft.com/v1.0/applications/$API_OBJ" \
   --headers "Content-Type=application/json" \
@@ -136,7 +153,15 @@ az rest --method PATCH \
           \"value\": \"access_as_user\"
         }
       ],
-      \"knownClientApplications\": [\"$SPA_ID\"],
+      \"knownClientApplications\": [\"$SPA_ID\"]
+    }
+  }" >/dev/null
+
+az rest --method PATCH \
+  --uri "https://graph.microsoft.com/v1.0/applications/$API_OBJ" \
+  --headers "Content-Type=application/json" \
+  --body "{
+    \"api\": {
       \"preAuthorizedApplications\": [
         { \"appId\": \"$SPA_ID\", \"delegatedPermissionIds\": [\"$SCOPE_ID\"] }
       ]
@@ -170,6 +195,9 @@ HAS_KEY_CRED="$(az ad app show --id "$API_ID" \
 if [[ "${HAS_KEY_CRED:-0}" == "0" ]]; then
   log "Attaching public certificate to API registration"
   PUBLIC_CER="$(mktemp --suffix=.cer)"
+  # az keyvault certificate download refuses to overwrite an existing file, and
+  # mktemp already created it, so remove the placeholder before downloading.
+  rm -f "$PUBLIC_CER"
   # Download ONLY the public certificate (DER), base64-encode for --cert.
   az keyvault certificate download \
     --vault-name "$KEY_VAULT_NAME" \

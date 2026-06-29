@@ -117,3 +117,31 @@ Total files affected: ~40 created across six components, plus 2 modified and 1 r
 Dependency and infrastructure changes: introduces npm (SPA), .NET 8 SDK (API), Azure App Service + Key Vault + App Insights + Log Analytics (Bicep), and GitHub Actions OIDC. No deploy secret is stored; the only runtime credential is a Key Vault certificate.
 
 Deployment notes (require a live Entra tenant + Azure subscription, out of scope for this build-time pass): run `scripts/provision-app-registrations.sh`, populate the GitHub Actions `vars.*` and the CI test-identity `secrets.*` (`TEST_SP_CLIENT_ID`/`TEST_SP_CLIENT_SECRET`/`TEST_USERNAME`/`TEST_PASSWORD`) plus `LOG_ANALYTICS_WORKSPACE_ID`, deploy the Bicep, then push to `main` to trigger deploy + evidence. The smoke/negative tests use the ROPC grant and need a dedicated non-MFA CI test user (tracked as WI-05). Live-tenant verification of sign-in-log column shapes and certificate provisioning is tracked as WI-01.
+
+## Operational Bring-Up (Live Azure + GitHub Wiring) — 2026-06-29
+
+Operationalized the demo end to end against the live tenant `aa93b9d9-037d-4f08-a26d-783cff0e2369` / subscription `64c3d212-40ed-4c6d-a825-6adfbdf25dad` so the CI/CD pipeline runs green (Option B: full out-of-band infrastructure provisioning).
+
+### Modified (script/template/doc portability and accuracy fixes)
+
+* scripts/provision-app-registrations.sh - Three live-run fixes:
+  * Added a portable `gen_uuid` shim (uuidgen -> /proc RNG -> PowerShell fallback) so the script runs under Git Bash on Windows, replacing the bare `uuidgen` call.
+  * Split the single API PATCH into two: commit `oauth2PermissionScopes` + `knownClientApplications` first, then `preAuthorizedApplications`, because Graph validates `delegatedPermissionIds` against scopes that already exist (was failing with `InvalidValue ... Permission Id that cannot be found`).
+  * Remove the `mktemp`-created placeholder `.cer` before `az keyvault certificate download`, which refuses to overwrite an existing file.
+* infra/modules/keyvault.bicep - `softDeleteRetentionInDays` 7 -> 90 to match the `az keyvault create` default (the property is immutable once set, so the pre-created vault could not be reconciled to 7).
+* docs/obo-demo-guide.md - Corrected Step 2: the workflow deploys application code only and does NOT provision the Bicep infrastructure. Documented the out-of-band `az deployment group create`, folded the Key Vault bootstrap into Step 1 (vault must pre-exist for the cert; RBAC role needed), and fixed the stale "az ad app create is not idempotent" note (the script is idempotent by display-name lookup).
+
+### Provisioned (live, not source changes)
+
+* Resource group `rg-croesus` (canadacentral); deploy app registration `Croesus Deploy Identity (mock)` (`AZURE_CLIENT_ID` 557551aa-e470-4da9-916f-4d366f604d12) with two federated credentials (subjects `repo:devopsabcs-engineering/croesus:environment:production` and `...:ref:refs/heads/main`) and Contributor on the RG.
+* Key Vault `kv-croesus-a65e90` (RBAC); signed-in user granted Key Vault Administrator.
+* App registrations: API `Croesus GPD Central API (mock)` (`API_CLIENT_ID` bc6338a5-a02a-4ddf-b1f4-9a9234bed8a8, scope `api://bc6338a5-.../access_as_user`, cert `croesus-api-cert` in Key Vault) and SPA `Croesus GPD Central SPA (mock)` (`SPA_CLIENT_ID` 06ef7c0a-9df3-4bcd-8b6f-ee275ca0adc2).
+* Infrastructure deployment `croesus-infra` (Succeeded): `croesus-spa` + `croesus-api` Web Apps, `croesus-asp` plan, `croesus-law` Log Analytics (customerId a676cc4e-eba9-472f-a3ee-404fee5bebe8), `croesus-appi` App Insights.
+* Test service principal `Croesus Test SP (mock)` (90b9c0e0-5715-44ec-8ffd-a1c7210152c4) for the negative test.
+* GitHub repo variables (12): AZURE_CLIENT_ID/TENANT_ID/SUBSCRIPTION_ID, RESOURCE_GROUP, SPA_CLIENT_ID, API_CLIENT_ID, API_SCOPE, API_BASE_URL (`https://croesus-api.azurewebsites.net`), KEY_VAULT_NAME, LOG_ANALYTICS_WORKSPACE_ID, SPA_APP_NAME (`croesus-spa`), API_APP_NAME (`croesus-api`).
+* GitHub Actions secrets: TEST_SP_CLIENT_ID, TEST_SP_CLIENT_SECRET (set without echoing the value). GitHub `production` environment ensured.
+
+### Outstanding (user action)
+
+* `TEST_USERNAME` / `TEST_PASSWORD` secrets are a real non-MFA CI test user's credentials and must be set by the user directly (`gh secret set TEST_USERNAME` / `TEST_PASSWORD`); never request or echo these.
+

@@ -49,27 +49,51 @@ sequenceDiagram
 * A GitHub repository that holds this demo, with the configuration and deploy-identity variables described in [configuration-contract.md](configuration-contract.md).
 * Permission to create the App Service, Key Vault, and Application Insights resources that [../infra/main.bicep](../infra/main.bicep) defines.
 
-## Step 1: Provision the app registrations
+## Step 1: Provision the Key Vault and app registrations
 
-Run the provisioning script. It creates two single-tenant registrations, the SPA as a public client and the API as a confidential client, exposes the `access_as_user` scope on the API, pre-authorizes the SPA, and grants the Microsoft Graph `User.Read` delegated permission.
+The API confidential-client certificate lives in a Key Vault, and the provisioning script needs that vault to exist before it can create the certificate. Create the vault first, then point the script at it with `KEY_VAULT_NAME`. The vault uses RBAC, so grant yourself a role that can create certificates (for example, **Key Vault Administrator**) on it before running the script.
 
 ```bash
-./scripts/provision-app-registrations.sh
+az keyvault create \
+  --name "$KEY_VAULT_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --location "$LOCATION" \
+  --enable-rbac-authorization true
 ```
 
-The script prints the identifiers you need next: the tenant ID, the SPA client ID, the API client ID, and the derived API scope (`api://<API_CLIENT_ID>/access_as_user`).
+Run the provisioning script. It creates two single-tenant registrations, the SPA as a public client and the API as a confidential client, exposes the `access_as_user` scope on the API, pre-authorizes the SPA, grants the Microsoft Graph `User.Read` delegated permission, and stores the API certificate in the Key Vault.
+
+```bash
+KEY_VAULT_NAME="$KEY_VAULT_NAME" ./scripts/provision-app-registrations.sh
+```
+
+The script prints the identifiers you need next: the SPA client ID, the API client ID, and the derived API scope (`api://<API_CLIENT_ID>/access_as_user`). Combine these with your tenant ID and the Key Vault name when you record the configuration.
 
 > [!NOTE]
-> `az ad app create` is not idempotent. Re-running the script creates duplicate registrations. For repeatable runs, look up each registration by display name first, or store the returned identifiers and reuse them.
+> The script is idempotent. It looks up each registration by display name and reuses the existing object, so re-running it does not create duplicates.
+
 
 Record the outputs as GitHub Actions repository variables. The full mapping, including which component reads each value, lives in [configuration-contract.md](configuration-contract.md).
 
 > [!IMPORTANT]
 > The API confidential-client credential is a certificate stored in Key Vault. It never appears in repository variables, in a `.bicepparam` file, or in the workflow. The API reads it through an App Service Key Vault reference resolved by a managed identity.
 
-## Step 2: Deploy the SPA and the API
+## Step 2: Deploy the infrastructure and the apps
 
-The deploy workflow at [../.github/workflows/deploy-croesus.yml](../.github/workflows/deploy-croesus.yml) does the rest. It authenticates to Azure with an OpenID Connect federated credential, so there is no long-lived deploy secret. It then provisions the infrastructure from [../infra/main.bicep](../infra/main.bicep) and deploys the [../spa/](../spa/) and [../api/](../api/) projects to the `croesus-spa` and `croesus-api` Web Apps.
+Deploy the infrastructure out of band with [../infra/main.bicep](../infra/main.bicep), passing the tenant ID, the SPA and API client IDs from Step 1, and the Key Vault name. This creates the App Service plan, the `croesus-spa` and `croesus-api` Web Apps, Application Insights, and the Log Analytics workspace, and wires the API's managed identity to the Key Vault.
+
+```bash
+az deployment group create \
+  --resource-group "$RESOURCE_GROUP" \
+  --template-file infra/main.bicep \
+  --parameters \
+      tenantId="$TENANT_ID" \
+      spaClientId="$SPA_CLIENT_ID" \
+      apiClientId="$API_CLIENT_ID" \
+      keyVaultName="$KEY_VAULT_NAME"
+```
+
+With the Web Apps in place, the deploy workflow at [../.github/workflows/deploy-croesus.yml](../.github/workflows/deploy-croesus.yml) builds and ships the application code. It authenticates to Azure with an OpenID Connect federated credential, so there is no long-lived deploy secret. It then publishes the [../spa/](../spa/) and [../api/](../api/) projects to the existing `croesus-spa` and `croesus-api` Web Apps. The workflow deploys application code only; it does not provision the infrastructure.
 
 Trigger the workflow from the GitHub Actions tab, or push to the branch the workflow watches. When the run finishes, the post-deploy evidence job has already executed the smoke test and the gated negative tests and written the results to the run summary.
 
