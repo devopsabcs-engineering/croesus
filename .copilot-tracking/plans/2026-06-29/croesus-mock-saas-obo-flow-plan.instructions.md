@@ -46,88 +46,88 @@ Build a runnable mock "Croesus / GPD Central" SaaS app — MSAL.js SPA (public c
 
 ## Implementation Checklist
 
-### [ ] Implementation Phase 1: Repository scaffolding and shared configuration
+### [x] Implementation Phase 1: Repository scaffolding and shared configuration
 
 <!-- parallelizable: false -->
 
-* [ ] Step 1.1: Create top-level directory structure and root tooling files
+* [x] Step 1.1: Create top-level directory structure and root tooling files
   * Details: .copilot-tracking/details/2026-06-29/croesus-mock-saas-obo-flow-details.md (Lines 38-60)
-* [ ] Step 1.2: Author the demo configuration contract document
+* [x] Step 1.2: Author the demo configuration contract document
   * Details: .copilot-tracking/details/2026-06-29/croesus-mock-saas-obo-flow-details.md (Lines 61-77)
 
-### [ ] Implementation Phase 2: SPA front end (React + MSAL.js public client)
+### [x] Implementation Phase 2: SPA front end (React + MSAL.js public client)
 
 <!-- parallelizable: true -->
 
-* [ ] Step 2.1: Scaffold the Vite React TypeScript SPA project
+* [x] Step 2.1: Scaffold the Vite React TypeScript SPA project
   * Details: .copilot-tracking/details/2026-06-29/croesus-mock-saas-obo-flow-details.md (Lines 82-103)
-* [ ] Step 2.2: Implement MSAL auth config and token acquisition for the API scope
+* [x] Step 2.2: Implement MSAL auth config and token acquisition for the API scope
   * Details: .copilot-tracking/details/2026-06-29/croesus-mock-saas-obo-flow-details.md (Lines 104-121)
-* [ ] Step 2.3: Build the demo UI showing sign-in, API call, and audience-binding evidence
+* [x] Step 2.3: Build the demo UI showing sign-in, API call, and audience-binding evidence
   * Details: .copilot-tracking/details/2026-06-29/croesus-mock-saas-obo-flow-details.md (Lines 122-142)
-* [ ] Step 2.4: Validate SPA build
+* [x] Step 2.4: Validate SPA build
   * Details: .copilot-tracking/details/2026-06-29/croesus-mock-saas-obo-flow-details.md (Lines 143-155)
 
-### [ ] Implementation Phase 3: Middle-tier API (ASP.NET Core + Microsoft.Identity.Web OBO) with evidence logging
+### [x] Implementation Phase 3: Middle-tier API (ASP.NET Core + Microsoft.Identity.Web OBO) with evidence logging
 
 <!-- parallelizable: true -->
 
-* [ ] Step 3.1: Scaffold the ASP.NET Core Web API project
+* [x] Step 3.1: Scaffold the ASP.NET Core Web API project
   * Details: .copilot-tracking/details/2026-06-29/croesus-mock-saas-obo-flow-details.md (Lines 160-180)
-* [ ] Step 3.2: Implement the /api/me OBO controller with audience/scope enforcement
+* [x] Step 3.2: Implement the /api/me OBO controller with audience/scope enforcement
   * Details: .copilot-tracking/details/2026-06-29/croesus-mock-saas-obo-flow-details.md (Lines 181-198)
-* [ ] Step 3.3: Add App Insights structured claim logging (evidence layer 3a)
+* [x] Step 3.3: Add App Insights structured claim logging (evidence layer 3a)
   * Details: .copilot-tracking/details/2026-06-29/croesus-mock-saas-obo-flow-details.md (Lines 199-216)
-* [ ] Step 3.4: Add the negative-control endpoints/tests (evidence layer)
+* [x] Step 3.4: Add the negative-control endpoints/tests (evidence layer)
   * Details: .copilot-tracking/details/2026-06-29/croesus-mock-saas-obo-flow-details.md (Lines 217-234)
-* [ ] Step 3.5: Validate API build and tests
+* [x] Step 3.5: Validate API build and tests
   * Details: .copilot-tracking/details/2026-06-29/croesus-mock-saas-obo-flow-details.md (Lines 235-248)
 
-### [ ] Implementation Phase 4: App registration provisioning, teardown, and verification scripts
+### [x] Implementation Phase 4: App registration provisioning, teardown, and verification scripts
 
 <!-- parallelizable: true -->
 
-* [ ] Step 4.1: Author the idempotent provisioning script (two single-tenant registrations)
+* [x] Step 4.1: Author the idempotent provisioning script (two single-tenant registrations)
   * Details: .copilot-tracking/details/2026-06-29/croesus-mock-saas-obo-flow-details.md (Lines 253-272)
-* [ ] Step 4.2: Author the teardown and verification scripts
+* [x] Step 4.2: Author the teardown and verification scripts
   * Details: .copilot-tracking/details/2026-06-29/croesus-mock-saas-obo-flow-details.md (Lines 273-290)
-* [ ] Step 4.3: Author smoke-test and negative-test scripts for CI
+* [x] Step 4.3: Author smoke-test and negative-test scripts for CI
   * Details: .copilot-tracking/details/2026-06-29/croesus-mock-saas-obo-flow-details.md (Lines 291-313)
 
-### [ ] Implementation Phase 5: Infrastructure as Code (Bicep)
+### [x] Implementation Phase 5: Infrastructure as Code (Bicep)
 
 <!-- parallelizable: true -->
 
-* [ ] Step 5.1: Author Bicep for App Service, Key Vault, Managed Identity, App Insights, and diagnostics
+* [x] Step 5.1: Author Bicep for App Service, Key Vault, Managed Identity, App Insights, and diagnostics
   * Details: .copilot-tracking/details/2026-06-29/croesus-mock-saas-obo-flow-details.md (Lines 318-339)
-* [ ] Step 5.2: Validate Bicep
+* [x] Step 5.2: Validate Bicep
   * Details: .copilot-tracking/details/2026-06-29/croesus-mock-saas-obo-flow-details.md (Lines 340-352)
 
-### [ ] Implementation Phase 6: CI/CD pipeline and post-deploy evidence job
+### [x] Implementation Phase 6: CI/CD pipeline (GitHub Actions) with post-deploy evidence job
 
 <!-- parallelizable: false -->
 
-* [ ] Step 6.1: Author the GitHub Actions deploy workflow (OIDC, no deploy secret)
+* [x] Step 6.1: Author the GitHub Actions deploy workflow (OIDC, no deploy secret)
   * Details: .copilot-tracking/details/2026-06-29/croesus-mock-saas-obo-flow-details.md (Lines 357-374)
-* [ ] Step 6.2: Add the post-deploy evidence job
+* [x] Step 6.2: Add the post-deploy evidence job
   * Details: .copilot-tracking/details/2026-06-29/croesus-mock-saas-obo-flow-details.md (Lines 375-393)
 
-### [ ] Implementation Phase 7: Documentation and evidence narrative
+### [x] Implementation Phase 7: Documentation and evidence narrative
 
 <!-- parallelizable: true -->
 
-* [ ] Step 7.1: Write the demo README and setup guide
+* [x] Step 7.1: Write the demo README and setup guide
   * Details: .copilot-tracking/details/2026-06-29/croesus-mock-saas-obo-flow-details.md (Lines 398-418)
 
-### [ ] Implementation Phase 8: Validation
+### [x] Implementation Phase 8: Validation
 
 <!-- parallelizable: false -->
 
-* [ ] Step 8.1: Run full project validation
+* [x] Step 8.1: Run full project validation
   * Details: .copilot-tracking/details/2026-06-29/croesus-mock-saas-obo-flow-details.md (Lines 423-436)
-* [ ] Step 8.2: Fix minor validation issues
+* [x] Step 8.2: Fix minor validation issues
   * Details: .copilot-tracking/details/2026-06-29/croesus-mock-saas-obo-flow-details.md (Lines 437-443)
-* [ ] Step 8.3: Report blocking issues
+* [x] Step 8.3: Report blocking issues
   * Details: .copilot-tracking/details/2026-06-29/croesus-mock-saas-obo-flow-details.md (Lines 444-452)
 
 ## Planning Log

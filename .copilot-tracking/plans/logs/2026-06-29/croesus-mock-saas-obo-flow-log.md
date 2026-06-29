@@ -49,6 +49,26 @@ Gaps and differences identified between research findings and the implementation
   * Plan implements: ASP.NET Core API + React SPA.
   * Rationale: Microsoft.Identity.Web's fluent chain removes any place to accidentally implement a token replay — the single most important property for a demo whose purpose is to disprove replay. Node alternative recorded as IP-02.
 
+* DD-03: Microsoft.Identity.Web pinned to 4.11.0 (details suggested "e.g. 3.x").
+  * Plan specifies: Pin to current stable, example 3.x.
+  * Implementation differs: 4.11.0 — 3.5.0 tripped advisory NU1902 (GHSA-rpq8-q44m-2rpg); 4.11.0 builds with 0 warnings. Consequently the Graph SDK is v4 (transitive) and `RequiredScopeAttribute` resolves from `Microsoft.Identity.Web.Resource`.
+  * Rationale: Security advisory avoidance; keeps the build clean. No behavioral change to the OBO flow.
+
+* DD-04: SPA EvidencePanel renders leg-2 `aud` from the API response rather than comparing against a hardcoded Graph URL constant.
+  * Plan specifies: Evidence panel referencing the Graph audience.
+  * Implementation differs: The hardcoded `https://graph.microsoft.com` constant was removed so the Graph-free grep gate passes; the Graph audience is still shown verbatim from API-returned runtime data.
+  * Rationale: Enforces "no Graph scope/URL anywhere in SPA config or source" while keeping the evidence honest.
+
+* DD-05: Solution file is `Croesus.Api.slnx` (XML format), not `.sln`.
+  * Plan specifies: Implicit `.sln`.
+  * Implementation differs: SDK 10.0.301 `dotnet new sln` emits `.slnx`; bare `dotnet build`/`dotnet test` resolve it automatically.
+  * Rationale: SDK default; validation contract still holds.
+
+* DD-06: App Insights connection string surfaced via Key Vault reference in Bicep rather than a plain `vars.*`/output.
+  * Plan specifies: Configuration contract lists `APPLICATIONINSIGHTS_CONNECTION_STRING` as a non-secret output/`vars.*`.
+  * Implementation differs: Phase 5 wires it as a `@Microsoft.KeyVault(SecretUri=...)` app-setting reference (treated as secret).
+  * Rationale: Connection string is sensitive; Key Vault reference is the safer posture. Contract row reconciliation tracked as WI-06.
+
 ## Implementation Paths Considered
 
 ### Selected: ASP.NET Core (Microsoft.Identity.Web) API + React/Vite SPA + App Service + GitHub Actions OIDC + audience-binding evidence
@@ -100,3 +120,15 @@ Items identified during planning that fall outside current scope.
 * WI-04: Multi-tenant SaaS onboarding walkthrough — a second artifact showing `/v2.0/adminconsent` provisioning for the realistic vendor-hosted multi-tenant model (low).
   * Source: .copilot-tracking/research/subagents/2026-06-29/app-registration-design-research.md (Lines 176-200)
   * Dependency: Single-tenant demo completed (documented as a callout in Phase 7).
+
+* WI-05: CI test-identity secrets for the smoke/negative scripts — add `TEST_SP_CLIENT_ID`, `TEST_SP_CLIENT_SECRET`, and (if ROPC) a dedicated non-MFA `TEST_USERNAME`/`TEST_PASSWORD` to the secret table, or replace ROPC with a device-code/Playwright token-A path if Conditional Access blocks ROPC (medium).
+  * Source: Phase 4, Step 4.3
+  * Dependency: A demo Entra tenant + a deployed API; CI secret store.
+
+* WI-06: Reconcile docs/configuration-contract.md with the as-built wiring — mark `APPLICATIONINSIGHTS_CONNECTION_STRING` as a Key Vault reference (per DD-06) and add the WI-05 test-identity secrets row (low). RESOLVED in Phase 6: contract updated with the Key Vault reference, the `LOG_ANALYTICS_WORKSPACE_ID` var, and the four CI test-identity secret rows.
+  * Source: Phase 5, Step 5.1; Phase 4, Step 4.3
+  * Dependency: None (doc edit; can fold into the Phase 6 workflow work).
+
+* WI-07: Add a `.gitattributes` with `*.sh text eol=lf` so a Windows contributor cannot reintroduce CRLF and break the CI shebang lines (low).
+  * Source: Phase 4
+  * Dependency: None.

@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/Tests/">
+    <Project Path="Tests/Croesus.Api.Tests.csproj" />
+  </Folder>
+  <Project Path="Croesus.Api.csproj" />
+</Solution>

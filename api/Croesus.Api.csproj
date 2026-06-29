@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Croesus.Api</RootNamespace>
+    <AssemblyName>Croesus.Api</AssemblyName>
+    <!-- The test project lives under api/Tests; keep its sources out of this Web SDK project's globs. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);Tests/**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Microsoft.Identity.Web provides the correct-by-construction OBO chain:
+      AddMicrosoftIdentityWebApi validates the inbound token, EnableTokenAcquisitionToCallDownstreamApi
+      turns on the On-Behalf-Of machinery, and AddMicrosoftGraph performs the OBO + Graph /me call.
+      There is no code path that forwards the inbound token to Graph (no replay anti-pattern).
+    -->
+    <PackageReference Include="Microsoft.Identity.Web" Version="4.11.0" />
+    <PackageReference Include="Microsoft.Identity.Web.MicrosoftGraph" Version="4.11.0" />
+    <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" Version="2.22.0" />
+  </ItemGroup>
+
+</Project>

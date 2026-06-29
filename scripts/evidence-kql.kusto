@@ -1,0 +1,54 @@
+// evidence-kql.kusto
+//
+// Corroborating sign-in-log evidence for the Croesus mock SaaS OBO flow.
+// These queries run in Log Analytics (the workspace that receives the Entra
+// sign-in diagnostic settings) and corroborate the PRIMARY evidence, which is
+// the API's App Insights claim logging of both token legs.
+//
+// Run each query block on its own (Log Analytics executes one query at a time).
+// Adjust the AppDisplayName / ResourceDisplayName literals to match the display
+// names of your provisioned app registrations if they differ.
+
+// =============================================================================
+// Query 1 - Interactive SPA sign-in (leg 0: user -> SPA)
+// Lands in SigninLogs because it is an interactive user sign-in.
+// =============================================================================
+SigninLogs
+| where TimeGenerated > ago(1h)
+| where AppDisplayName == "Croesus SPA"
+| project TimeGenerated, CorrelationId, AppDisplayName, ResourceDisplayName, UserPrincipalName, Status
+| sort by TimeGenerated asc
+
+// =============================================================================
+// Query 2 - OBO legs (PRIMARY corroboration): API -> API token and API -> Graph
+// The middle-tier OBO exchange is non-interactive, so it lands in
+// AADNonInteractiveUserSignInLogs. The API->Graph row shows
+// ResourceDisplayName == "Microsoft Graph" while the SPA->API row shows the API
+// as the resource: distinct tokens for distinct audiences, not one token reused.
+// The preserved UserPrincipalName proves the delegated user identity flowed
+// through (an app-only client-credentials call would show no user).
+// =============================================================================
+AADNonInteractiveUserSignInLogs
+| where TimeGenerated > ago(1h)
+| where AppDisplayName == "Croesus API" or ResourceDisplayName == "Microsoft Graph"
+| project TimeGenerated, CorrelationId, AppDisplayName, ResourceDisplayName,
+          UserPrincipalName, ResourceIdentity, Status
+| sort by TimeGenerated asc
+
+// =============================================================================
+// Query 3 - Token Protection bound vs unbound (OPTIONAL, ADVANCED EXHIBIT ONLY)
+// NOT the OBO proof. The Token Protection / sign-in-session-binding signal
+// (signInSessionStatusCode 1008 = unbound) is populated for native apps on
+// registered devices accessing Exchange Online / SharePoint Online / Teams, and
+// will generally NOT appear for a browser SPA + custom API + Graph flow. Include
+// this only as a separate, clearly-labeled "device-bound session" exhibit.
+// =============================================================================
+AADNonInteractiveUserSignInLogs
+| where TimeGenerated > ago(7d)
+| where TokenProtectionStatusDetails != ""
+| extend d = parse_json(TokenProtectionStatusDetails)
+| extend bindingStatus     = tostring(d["signInSessionStatus"])     // "Bound" / "Unbound"
+| extend bindingStatusCode = tostring(d["signInSessionStatusCode"]) // 1002/1003/1005/1006/1008
+| project TimeGenerated, UserPrincipalName, AppDisplayName, ResourceDisplayName,
+          bindingStatus, bindingStatusCode
+| sort by TimeGenerated desc

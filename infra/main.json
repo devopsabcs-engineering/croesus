@@ -1,0 +1,722 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.44.1.10279",
+      "templateHash": "3645776829124890494"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Azure region for all resources. Defaults to the resource group location."
+      }
+    },
+    "tenantId": {
+      "type": "string",
+      "metadata": {
+        "description": "Microsoft Entra tenant ID."
+      }
+    },
+    "spaClientId": {
+      "type": "string",
+      "metadata": {
+        "description": "SPA (public client) app registration ID."
+      }
+    },
+    "apiClientId": {
+      "type": "string",
+      "metadata": {
+        "description": "API (confidential client) app registration ID."
+      }
+    },
+    "aadInstance": {
+      "type": "string",
+      "defaultValue": "[environment().authentication.loginEndpoint]",
+      "metadata": {
+        "description": "Microsoft Entra authority instance."
+      }
+    },
+    "apiAudience": {
+      "type": "string",
+      "defaultValue": "[format('api://{0}', parameters('apiClientId'))]",
+      "metadata": {
+        "description": "Expected audience for tokens presented to the API. Defaults to api://<apiClientId>."
+      }
+    },
+    "spaAppName": {
+      "type": "string",
+      "defaultValue": "croesus-spa",
+      "metadata": {
+        "description": "Name of the SPA Web App."
+      }
+    },
+    "apiAppName": {
+      "type": "string",
+      "defaultValue": "croesus-api",
+      "metadata": {
+        "description": "Name of the API Web App."
+      }
+    },
+    "appServicePlanName": {
+      "type": "string",
+      "defaultValue": "croesus-asp",
+      "metadata": {
+        "description": "Name of the shared Linux App Service plan."
+      }
+    },
+    "keyVaultName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the Key Vault."
+      }
+    },
+    "logAnalyticsWorkspaceName": {
+      "type": "string",
+      "defaultValue": "croesus-law",
+      "metadata": {
+        "description": "Name of the Log Analytics workspace."
+      }
+    },
+    "appInsightsName": {
+      "type": "string",
+      "defaultValue": "croesus-appi",
+      "metadata": {
+        "description": "Name of the Application Insights component."
+      }
+    },
+    "certSecretName": {
+      "type": "string",
+      "defaultValue": "croesus-api-cert",
+      "metadata": {
+        "description": "Key Vault secret name for the API confidential-client certificate (provisioned out-of-band)."
+      }
+    },
+    "appInsightsConnectionStringSecretName": {
+      "type": "string",
+      "defaultValue": "appinsights-connection-string",
+      "metadata": {
+        "description": "Key Vault secret name for the Application Insights connection string."
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "monitoring",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "logAnalyticsWorkspaceName": {
+            "value": "[parameters('logAnalyticsWorkspaceName')]"
+          },
+          "appInsightsName": {
+            "value": "[parameters('appInsightsName')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.44.1.10279",
+              "templateHash": "7138220402923218438"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for the Log Analytics workspace and Application Insights resource."
+              }
+            },
+            "logAnalyticsWorkspaceName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Log Analytics workspace."
+              }
+            },
+            "appInsightsName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the workspace-based Application Insights component."
+              }
+            },
+            "diagnosticSettingName": {
+              "type": "string",
+              "defaultValue": "croesus-entra-signin-diagnostics",
+              "metadata": {
+                "description": "Name of the Entra ID (aadiam) diagnostic setting that streams sign-in logs to Log Analytics."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.OperationalInsights/workspaces",
+              "apiVersion": "2023-09-01",
+              "name": "[parameters('logAnalyticsWorkspaceName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "sku": {
+                  "name": "PerGB2018"
+                },
+                "retentionInDays": 30,
+                "features": {
+                  "enableLogAccessUsingOnlyResourcePermissions": true
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Insights/components",
+              "apiVersion": "2020-02-02",
+              "name": "[parameters('appInsightsName')]",
+              "location": "[parameters('location')]",
+              "kind": "web",
+              "properties": {
+                "Application_Type": "web",
+                "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]",
+                "IngestionMode": "LogAnalytics",
+                "publicNetworkAccessForIngestion": "Enabled",
+                "publicNetworkAccessForQuery": "Enabled"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]"
+              ]
+            },
+            {
+              "type": "microsoft.aadiam/diagnosticSettings",
+              "apiVersion": "2017-04-01",
+              "scope": "/",
+              "name": "[parameters('diagnosticSettingName')]",
+              "properties": {
+                "workspaceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]",
+                "logs": [
+                  {
+                    "category": "SignInLogs",
+                    "enabled": true
+                  },
+                  {
+                    "category": "NonInteractiveUserSignInLogs",
+                    "enabled": true
+                  },
+                  {
+                    "category": "AuditLogs",
+                    "enabled": true
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "logAnalyticsWorkspaceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the Log Analytics workspace."
+              },
+              "value": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]"
+            },
+            "appInsightsName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Application Insights component."
+              },
+              "value": "[parameters('appInsightsName')]"
+            },
+            "appInsightsConnectionString": {
+              "type": "string",
+              "metadata": {
+                "description": "Application Insights connection string. Passed by reference to the Key Vault module for storage; never written as a literal in source."
+              },
+              "value": "[reference(resourceId('Microsoft.Insights/components', parameters('appInsightsName')), '2020-02-02').ConnectionString]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "appservice",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "appServicePlanName": {
+            "value": "[parameters('appServicePlanName')]"
+          },
+          "spaAppName": {
+            "value": "[parameters('spaAppName')]"
+          },
+          "apiAppName": {
+            "value": "[parameters('apiAppName')]"
+          },
+          "tenantId": {
+            "value": "[parameters('tenantId')]"
+          },
+          "spaClientId": {
+            "value": "[parameters('spaClientId')]"
+          },
+          "apiClientId": {
+            "value": "[parameters('apiClientId')]"
+          },
+          "aadInstance": {
+            "value": "[parameters('aadInstance')]"
+          },
+          "apiAudience": {
+            "value": "[parameters('apiAudience')]"
+          },
+          "keyVaultName": {
+            "value": "[parameters('keyVaultName')]"
+          },
+          "certSecretName": {
+            "value": "[parameters('certSecretName')]"
+          },
+          "appInsightsConnectionStringSecretName": {
+            "value": "[parameters('appInsightsConnectionStringSecretName')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.44.1.10279",
+              "templateHash": "14690687347676418664"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for the App Service plan and Web Apps."
+              }
+            },
+            "appServicePlanName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the shared Linux App Service plan."
+              }
+            },
+            "spaAppName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the SPA Web App (public-client front end)."
+              }
+            },
+            "apiAppName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the API Web App (confidential-client middle tier)."
+              }
+            },
+            "tenantId": {
+              "type": "string",
+              "metadata": {
+                "description": "Microsoft Entra tenant ID consumed by the API AzureAd configuration."
+              }
+            },
+            "spaClientId": {
+              "type": "string",
+              "metadata": {
+                "description": "SPA (public client) app registration ID. Surfaced as an informational SPA app setting."
+              }
+            },
+            "apiClientId": {
+              "type": "string",
+              "metadata": {
+                "description": "API (confidential client) app registration ID consumed by the API AzureAd configuration."
+              }
+            },
+            "aadInstance": {
+              "type": "string",
+              "defaultValue": "[environment().authentication.loginEndpoint]",
+              "metadata": {
+                "description": "Microsoft Entra authority instance, e.g. https://login.microsoftonline.com/."
+              }
+            },
+            "apiAudience": {
+              "type": "string",
+              "defaultValue": "[format('api://{0}', parameters('apiClientId'))]",
+              "metadata": {
+                "description": "Expected audience for tokens presented to the API. Defaults to api://<apiClientId>."
+              }
+            },
+            "keyVaultName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Key Vault that holds the API certificate and the App Insights connection string secret."
+              }
+            },
+            "certSecretName": {
+              "type": "string",
+              "defaultValue": "croesus-api-cert",
+              "metadata": {
+                "description": "Key Vault secret name holding the API confidential-client certificate (provisioned out-of-band)."
+              }
+            },
+            "appInsightsConnectionStringSecretName": {
+              "type": "string",
+              "defaultValue": "appinsights-connection-string",
+              "metadata": {
+                "description": "Key Vault secret name holding the Application Insights connection string."
+              }
+            }
+          },
+          "variables": {
+            "keyVaultDnsSuffix": "[environment().suffixes.keyvaultDns]",
+            "certSecretUri": "[format('https://{0}{1}/secrets/{2}', parameters('keyVaultName'), variables('keyVaultDnsSuffix'), parameters('certSecretName'))]",
+            "appInsightsConnectionStringSecretUri": "[format('https://{0}{1}/secrets/{2}', parameters('keyVaultName'), variables('keyVaultDnsSuffix'), parameters('appInsightsConnectionStringSecretName'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Web/serverfarms",
+              "apiVersion": "2024-04-01",
+              "name": "[parameters('appServicePlanName')]",
+              "location": "[parameters('location')]",
+              "kind": "linux",
+              "sku": {
+                "name": "B1",
+                "tier": "Basic"
+              },
+              "properties": {
+                "reserved": true
+              }
+            },
+            {
+              "type": "Microsoft.Web/sites",
+              "apiVersion": "2024-04-01",
+              "name": "[parameters('spaAppName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('appServicePlanName'))]",
+                "httpsOnly": true,
+                "siteConfig": {
+                  "linuxFxVersion": "NODE|20-lts",
+                  "ftpsState": "Disabled",
+                  "minTlsVersion": "1.2",
+                  "appSettings": [
+                    {
+                      "name": "SPA_CLIENT_ID",
+                      "value": "[parameters('spaClientId')]"
+                    },
+                    {
+                      "name": "TENANT_ID",
+                      "value": "[parameters('tenantId')]"
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/serverfarms', parameters('appServicePlanName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Web/sites",
+              "apiVersion": "2024-04-01",
+              "name": "[parameters('apiAppName')]",
+              "location": "[parameters('location')]",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('appServicePlanName'))]",
+                "httpsOnly": true,
+                "siteConfig": {
+                  "linuxFxVersion": "DOTNETCORE|8.0",
+                  "ftpsState": "Disabled",
+                  "minTlsVersion": "1.2",
+                  "appSettings": [
+                    {
+                      "name": "AzureAd__Instance",
+                      "value": "[parameters('aadInstance')]"
+                    },
+                    {
+                      "name": "AzureAd__TenantId",
+                      "value": "[parameters('tenantId')]"
+                    },
+                    {
+                      "name": "AzureAd__ClientId",
+                      "value": "[parameters('apiClientId')]"
+                    },
+                    {
+                      "name": "AzureAd__Audience",
+                      "value": "[parameters('apiAudience')]"
+                    },
+                    {
+                      "name": "AzureAd__ClientCertificate",
+                      "value": "[format('@Microsoft.KeyVault(SecretUri={0})', variables('certSecretUri'))]"
+                    },
+                    {
+                      "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+                      "value": "[format('@Microsoft.KeyVault(SecretUri={0})', variables('appInsightsConnectionStringSecretUri'))]"
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/serverfarms', parameters('appServicePlanName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "apiPrincipalId": {
+              "type": "string",
+              "metadata": {
+                "description": "Principal ID of the API Web App system-assigned Managed Identity (for Key Vault RBAC)."
+              },
+              "value": "[reference(resourceId('Microsoft.Web/sites', parameters('apiAppName')), '2024-04-01', 'full').identity.principalId]"
+            },
+            "apiHostName": {
+              "type": "string",
+              "metadata": {
+                "description": "Default host name of the API Web App."
+              },
+              "value": "[reference(resourceId('Microsoft.Web/sites', parameters('apiAppName')), '2024-04-01').defaultHostName]"
+            },
+            "spaHostName": {
+              "type": "string",
+              "metadata": {
+                "description": "Default host name of the SPA Web App."
+              },
+              "value": "[reference(resourceId('Microsoft.Web/sites', parameters('spaAppName')), '2024-04-01').defaultHostName]"
+            },
+            "apiAppName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the API Web App."
+              },
+              "value": "[parameters('apiAppName')]"
+            },
+            "spaAppName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the SPA Web App."
+              },
+              "value": "[parameters('spaAppName')]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "keyvault",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "keyVaultName": {
+            "value": "[parameters('keyVaultName')]"
+          },
+          "tenantId": {
+            "value": "[parameters('tenantId')]"
+          },
+          "apiPrincipalId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2025-04-01').outputs.apiPrincipalId.value]"
+          },
+          "appInsightsConnectionString": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'monitoring'), '2025-04-01').outputs.appInsightsConnectionString.value]"
+          },
+          "appInsightsConnectionStringSecretName": {
+            "value": "[parameters('appInsightsConnectionStringSecretName')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.44.1.10279",
+              "templateHash": "17683638907688591719"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for the Key Vault."
+              }
+            },
+            "keyVaultName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Key Vault."
+              }
+            },
+            "tenantId": {
+              "type": "string",
+              "metadata": {
+                "description": "Microsoft Entra tenant ID that owns the Key Vault."
+              }
+            },
+            "apiPrincipalId": {
+              "type": "string",
+              "metadata": {
+                "description": "Principal ID of the API Web App Managed Identity granted Key Vault Secrets User."
+              }
+            },
+            "appInsightsConnectionString": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Application Insights connection string, passed by reference from the monitoring module."
+              }
+            },
+            "appInsightsConnectionStringSecretName": {
+              "type": "string",
+              "defaultValue": "appinsights-connection-string",
+              "metadata": {
+                "description": "Name of the secret that stores the Application Insights connection string."
+              }
+            }
+          },
+          "variables": {
+            "keyVaultSecretsUserRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.KeyVault/vaults",
+              "apiVersion": "2023-07-01",
+              "name": "[parameters('keyVaultName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "tenantId": "[parameters('tenantId')]",
+                "sku": {
+                  "family": "A",
+                  "name": "standard"
+                },
+                "enableRbacAuthorization": true,
+                "enableSoftDelete": true,
+                "softDeleteRetentionInDays": 7,
+                "publicNetworkAccess": "Enabled"
+              }
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), parameters('apiPrincipalId'), variables('keyVaultSecretsUserRoleId'))]",
+              "properties": {
+                "roleDefinitionId": "[variables('keyVaultSecretsUserRoleId')]",
+                "principalId": "[parameters('apiPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('keyVaultName'), parameters('appInsightsConnectionStringSecretName'))]",
+              "properties": {
+                "value": "[parameters('appInsightsConnectionString')]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "keyVaultUri": {
+              "type": "string",
+              "metadata": {
+                "description": "URI of the Key Vault."
+              },
+              "value": "[reference(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), '2023-07-01').vaultUri]"
+            },
+            "keyVaultName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Key Vault."
+              },
+              "value": "[parameters('keyVaultName')]"
+            },
+            "appInsightsConnectionStringSecretUri": {
+              "type": "string",
+              "metadata": {
+                "description": "Key Vault reference URI for the Application Insights connection string secret."
+              },
+              "value": "[format('{0}secrets/{1}', reference(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), '2023-07-01').vaultUri, parameters('appInsightsConnectionStringSecretName'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'appservice')]",
+        "[resourceId('Microsoft.Resources/deployments', 'monitoring')]"
+      ]
+    }
+  ],
+  "outputs": {
+    "spaAppName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the SPA Web App."
+      },
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2025-04-01').outputs.spaAppName.value]"
+    },
+    "apiAppName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the API Web App."
+      },
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2025-04-01').outputs.apiAppName.value]"
+    },
+    "spaHostName": {
+      "type": "string",
+      "metadata": {
+        "description": "Default host name of the SPA Web App."
+      },
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2025-04-01').outputs.spaHostName.value]"
+    },
+    "apiHostName": {
+      "type": "string",
+      "metadata": {
+        "description": "Default host name of the API Web App."
+      },
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'appservice'), '2025-04-01').outputs.apiHostName.value]"
+    },
+    "keyVaultUri": {
+      "type": "string",
+      "metadata": {
+        "description": "URI of the Key Vault."
+      },
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'keyvault'), '2025-04-01').outputs.keyVaultUri.value]"
+    },
+    "appInsightsConnectionStringSecretUri": {
+      "type": "string",
+      "metadata": {
+        "description": "Key Vault reference URI for the Application Insights connection string (no literal value emitted)."
+      },
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'keyvault'), '2025-04-01').outputs.appInsightsConnectionStringSecretUri.value]"
+    }
+  }
+}

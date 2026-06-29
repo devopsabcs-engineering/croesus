@@ -1,0 +1,176 @@
+name: deploy-croesus
+
+# Builds and deploys the Croesus mock SaaS OBO demo (SPA + API), then runs a
+# gated post-deploy evidence job that proves the two-leg, audience-bound OBO
+# flow and surfaces the claim evidence + portal deep links to the run summary.
+#
+# Auth model:
+#   * Deploy identity  -> OIDC federated credential (no stored deploy secret).
+#   * API confidential client -> certificate in Key Vault (never in this file).
+# All public identifiers are non-secret GitHub Actions variables (vars.*).
+# Only the CI test identity uses secrets (secrets.*), and only in the evidence job.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write # required for OIDC login to Azure
+  contents: read
+
+env:
+  AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }} # deploy identity (FIC), NOT the API credential
+  AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  SPA_APP_NAME: ${{ vars.SPA_APP_NAME }}
+  API_APP_NAME: ${{ vars.API_APP_NAME }}
+
+jobs:
+  build-spa:
+    name: Build SPA
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: spa/package-lock.json
+      - name: Build SPA (public config only; client IDs/tenant/scope are NOT secrets)
+        working-directory: ./spa
+        env:
+          VITE_SPA_CLIENT_ID: ${{ vars.SPA_CLIENT_ID }}
+          VITE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          VITE_API_SCOPE: ${{ vars.API_SCOPE }}
+          VITE_API_BASE_URL: ${{ vars.API_BASE_URL }}
+        run: |
+          npm ci
+          npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spa
+          path: ./spa/dist
+
+  build-api:
+    name: Build API
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Publish API
+        run: dotnet publish api/Croesus.Api.csproj -c Release -o ./api-publish
+      - uses: actions/upload-artifact@v4
+        with:
+          name: api
+          path: ./api-publish
+
+  deploy:
+    name: Deploy SPA + API
+    needs: [build-spa, build-api]
+    runs-on: ubuntu-latest
+    environment: production # manual gate + environment-scoped variables
+    steps:
+      - name: Download SPA artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: spa
+          path: ./spa-dist
+      - name: Download API artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: api
+          path: ./api-publish
+      - name: Azure login (OIDC, no stored secret)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+      - name: Deploy SPA
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.SPA_APP_NAME }}
+          package: ./spa-dist
+      - name: Deploy API
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.API_APP_NAME }}
+          package: ./api-publish
+
+  evidence:
+    name: Post-deploy OBO evidence
+    needs: [deploy]
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      SPA_CLIENT_ID: ${{ vars.SPA_CLIENT_ID }}
+      API_SCOPE: ${{ vars.API_SCOPE }}
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+      TEST_SP_CLIENT_ID: ${{ secrets.TEST_SP_CLIENT_ID }}
+      TEST_SP_CLIENT_SECRET: ${{ secrets.TEST_SP_CLIENT_SECRET }}
+      TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
+      TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+      EVIDENCE_FILE: obo-evidence.md
+    steps:
+      - uses: actions/checkout@v4
+      - name: Azure login (OIDC, no stored secret)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Smoke test (two-leg claim summary)
+        run: |
+          chmod +x scripts/*.sh
+          bash scripts/smoke-test.sh
+      - name: Negative control (gated; fails if a mismatched-audience token is accepted)
+        run: bash scripts/negative-test.sh
+      - name: Correlate sign-in legs via Log Analytics
+        env:
+          WORKSPACE_ID: ${{ vars.LOG_ANALYTICS_WORKSPACE_ID }}
+        run: |
+          set -euo pipefail
+          query='AADNonInteractiveUserSignInLogs
+          | where TimeGenerated > ago(1h)
+          | where AppDisplayName == "Croesus API" or ResourceDisplayName == "Microsoft Graph"
+          | project TimeGenerated, CorrelationId, AppDisplayName, ResourceDisplayName, UserPrincipalName, ResourceIdentity, Status
+          | sort by TimeGenerated asc'
+          {
+            echo "### OBO two-leg correlation (non-interactive sign-in logs)"
+            echo ""
+          } | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
+          if az monitor log-analytics query \
+              --workspace "$WORKSPACE_ID" \
+              --analytics-query "$query" \
+              --output table | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null; then
+            printf '\n' | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
+          else
+            echo "_Log Analytics query returned no rows yet (sign-in logs can lag a few minutes)._" \
+              | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
+          fi
+          echo "> Full query set (interactive, non-interactive correlation, optional Token Protection): \`scripts/evidence-kql.kusto\`." \
+            | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
+      - name: Portal deep links
+        run: |
+          sub='${{ vars.AZURE_SUBSCRIPTION_ID }}'
+          rg='${{ vars.RESOURCE_GROUP }}'
+          {
+            echo "### Live evidence deep links"
+            echo ""
+            echo "- Application Insights (transaction search, OBO claim logs): https://portal.azure.com/#blade/HubsExtension/BrowseResource/resourceType/microsoft.insights%2Fcomponents"
+            echo "- Entra sign-in logs (interactive SPA -> API): https://entra.microsoft.com/#view/Microsoft_AAD_IAM/SignInsBlade"
+            echo "- Entra non-interactive sign-in logs (API -> Graph OBO leg): https://entra.microsoft.com/#view/Microsoft_AAD_IAM/NonInteractiveSignInsBlade"
+            echo ""
+            echo "_Subscription \`${sub}\`, resource group \`${rg}\`._"
+          } | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
+      - name: Upload claim summary artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: obo-evidence
+          path: ${{ env.EVIDENCE_FILE }}
+          if-no-files-found: ignore

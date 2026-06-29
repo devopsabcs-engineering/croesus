@@ -36,3 +36,76 @@ Positive posture confirmed: no credentials on any registration, scoped HTTPS red
 | [croesus_entra_oauth_integration_report_20260529_185237.pdf](assets/croesus_entra_oauth_integration_report_20260529_185237.pdf) | Vendor OAuth integration advisory (RMS-protected). |
 | [non_prod_sso_conditional_access_report_20260529_180104.pdf](assets/non_prod_sso_conditional_access_report_20260529_180104.pdf) | Non-prod SSO Conditional Access report. |
 | [PROD.docx](assets/PROD.docx) | Production reference document (RMS-protected). |
+
+## Mock Croesus SaaS OBO demo
+
+The analysis above concluded that the three production registrations cannot perform a standards-compliant On-Behalf-Of (OBO) exchange: they hold no credential and expose no API scope, so the second sign-in is a server-side token replay to Microsoft Graph. This demo builds the corrected shape end-to-end so we can show Desjardins exactly what a real OBO looks like and how to prove it.
+
+We frame the demo as the vendor would: we are the Croesus vendor providing a setup guide, and Desjardins stands up the two app registrations in their own tenant.
+
+### Architecture
+
+A React single-page application (SPA) signs the user in and requests a token for the API scope only. The ASP.NET Core middle-tier API validates that token, performs the OBO exchange to acquire a separate Microsoft Graph token, and calls `GET /me`. The SPA never asks for a Graph scope, which forces the OBO boundary to exist.
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant S as SPA (public client)
+    participant A as croesus-api (confidential client)
+    participant E as Entra token endpoint
+    participant G as Microsoft Graph
+    U->>S: Interactive sign-in (auth code + PKCE)
+    S->>E: acquireTokenSilent (scope = api://API/access_as_user)
+    E-->>S: token A (aud = API)
+    S->>A: GET /api/me with Bearer token A
+    A->>A: Validate token A (aud == API, scp == access_as_user)
+    A->>E: OBO exchange (on_behalf_of, client cert, assertion = token A)
+    E-->>A: token B (aud = Microsoft Graph, new jti and iat)
+    A->>G: GET /me with Bearer token B
+    G-->>A: user profile
+    A-->>S: profile plus decoded-claim evidence
+```
+
+### Wrong versus right
+
+The broken baseline in [assets/app-registration-analysis-findings.md](assets/app-registration-analysis-findings.md) reuses the user's token directly against Graph: one token, one audience, no credential, no API scope. The corrected demo issues two distinct tokens with distinct audiences and distinct `jti` values, and the middle tier authenticates as a confidential client. The audience boundary is the difference between a replay and a real OBO.
+
+| Property | Broken baseline (replay) | Corrected demo (OBO) |
+| --- | --- | --- |
+| Tokens involved | One user token reused | Two tokens, leg 1 and leg 2 |
+| Second-leg audience (`aud`) | Microsoft Graph (same token) | Microsoft Graph (freshly issued) |
+| Middle-tier credential | None | Certificate in Key Vault |
+| Exposed API scope | None | `access_as_user` |
+| `jti` across legs | Identical (replay) | Distinct (new issuance) |
+
+### Prerequisites
+
+- An Azure subscription and a single Microsoft Entra tenant where you can create app registrations and grant admin consent.
+- The Azure CLI signed in to that tenant.
+- A GitHub repository with the deploy federated-identity and configuration variables described in [docs/configuration-contract.md](docs/configuration-contract.md).
+
+### Provision
+
+Create the two single-tenant app registrations and capture their identifiers with the provisioning script:
+
+```bash
+./scripts/provision-app-registrations.sh
+```
+
+Store the script's outputs as the GitHub Actions repository variables listed in [docs/configuration-contract.md](docs/configuration-contract.md). The API certificate lives only in Key Vault and never enters the repository or the workflow.
+
+### Deploy
+
+The [.github/workflows/deploy-croesus.yml](.github/workflows/deploy-croesus.yml) workflow authenticates to Azure with an OpenID Connect federated credential (no deploy secret), provisions the infrastructure from [infra/main.bicep](infra/main.bicep), and deploys the [spa/](spa/) and [api/](api/) projects to two App Service Web Apps. A post-deploy evidence job runs the smoke test and the gated negative tests and writes the proof to the run summary.
+
+### Read the evidence
+
+The API logs decoded claims (never raw tokens) to Application Insights for both legs: leg 1 shows `aud == API`, leg 2 shows `aud == Microsoft Graph` with a new `jti` and `iat`. The Entra non-interactive sign-in logs in [scripts/evidence-kql.kusto](scripts/evidence-kql.kusto) corroborate the two correlated legs. Together they prove the second token is freshly issued, not a relay of the first.
+
+For the full walk-through and the question-by-question proof, see the demo guide and the evidence narrative.
+
+| Document | Purpose |
+| --- | --- |
+| [docs/obo-demo-guide.md](docs/obo-demo-guide.md) | Provision, deploy, exercise the flow, and interpret the evidence. |
+| [docs/evidence-narrative.md](docs/evidence-narrative.md) | Maps the escalation-packet questions to the demo's concrete evidence. |
+| [docs/configuration-contract.md](docs/configuration-contract.md) | Authoritative catalog of every configuration value the demo consumes. |

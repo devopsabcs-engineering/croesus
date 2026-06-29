@@ -1,0 +1,24 @@
+
+added 70 packages, and audited 71 packages in 14s
+
+7 packages are looking for funding
+  run `npm fund` for details
+
+2 vulnerabilities (1 moderate, 1 high)
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+
+> croesus-spa@0.1.0 build
+> tsc && vite build
+
+[36mvite v5.4.21 [32mbuilding for production...[36m[39m
+transforming...
+[32m✓[39m 181 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[22m[32mindex.html                [39m[1m[2m  0.35 kB[22m[1m[22m[2m │ gzip:   0.26 kB[22m
+[2mdist/[22m[36massets/index-uTF4FE7g.js  [39m[1m[2m420.12 kB[22m[1m[22m[2m │ gzip: 114.47 kB[22m
+[32m✓ built in 1.07s[39m
