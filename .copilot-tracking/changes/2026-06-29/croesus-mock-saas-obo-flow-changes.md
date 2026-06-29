@@ -196,6 +196,11 @@ After interactive sign-in succeeded, clicking **Call API** in the SPA failed wit
 
 * `croesus-api` app setting `Cors__AllowedOrigins__0 = https://croesus-spa.azurewebsites.net` set live (the pipeline deploys code only, not Bicep). API redeployed via run 28408604044 to pick up the `UseCors` middleware.
 
+### Verified
+
+* Preflight `OPTIONS /api/me` (Origin = SPA) returns `204` with `Access-Control-Allow-Origin: https://croesus-spa.azurewebsites.net`, `Access-Control-Allow-Methods: GET`, `Access-Control-Allow-Headers: authorization`.
+* Unauthenticated `GET /api/me` returns `401` with `WWW-Authenticate: Bearer` **and** the `Access-Control-Allow-Origin` header, so the browser surfaces the response instead of failing the fetch. With a valid SPA token the call returns the OBO claim evidence.
+
 ### Outstanding (user action)
 
 * Verify the rendered wiki pages and embedded screenshots while signed in to GitHub (the integrated browser is unauthenticated, so it cannot view the private wiki). If a relative image path does not render, replace `![alt](images/<file>.png)` with the GitHub wiki embed `[[images/<file>.png]]`.
