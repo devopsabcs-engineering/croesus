@@ -122,7 +122,16 @@ resource apiApp 'Microsoft.Web/sites@2024-04-01' = {
           value: apiAudience
         }
         {
-          name: 'AzureAd__ClientCertificate'
+          // The confidential-client certificate is loaded by Microsoft.Identity.Web
+          // from its Key Vault backing secret (the full PKCS#12 bundle) via an App
+          // Service Key Vault reference resolved by the API Managed Identity. This
+          // binds to AzureAd:ClientCredentials[0] (SourceType=Base64Encoded), the
+          // shape Microsoft.Identity.Web actually reads. No cert material is inline.
+          name: 'AzureAd__ClientCredentials__0__SourceType'
+          value: 'Base64Encoded'
+        }
+        {
+          name: 'AzureAd__ClientCredentials__0__Base64EncodedValue'
           value: '@Microsoft.KeyVault(SecretUri=${certSecretUri})'
         }
         {

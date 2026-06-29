@@ -8,6 +8,19 @@
 
 Build a runnable mock "Croesus / GPD Central" SaaS app — MSAL.js SPA (public client) -> ASP.NET Core middle-tier API (confidential client) -> Microsoft Graph via standards On-Behalf-Of — with provisioning scripts, Bicep, a GitHub Actions OIDC pipeline, and audience-binding evidence that proves the token-replay issue is avoidable.
 
+## API Client Certificate Fix (OBO cert load failure) — 2026-06-29
+
+After CORS was fixed, **Call API** still showed `Failed to fetch` — but the cause was server-side. The container log showed the OBO confidential-client credential failing to load: `Credential CertificateFromKeyVault=https://REPLACE_WITH_KEY_VAULT_NAME.vault.azure.net/croesus-api-cert ... SocketException: Name or service not known`. Two defects combined: (1) `api/appsettings.json` `AzureAd:ClientCredentials[0]` still held the literal `REPLACE_WITH_KEY_VAULT_NAME` placeholder, and (2) the Bicep injected the cert under app setting `AzureAd__ClientCertificate`, which Microsoft.Identity.Web does not bind (it reads `AzureAd:ClientCredentials`). So the OBO exchange threw, the request stalled, and the browser surfaced it as `Failed to fetch`.
+
+### Modified
+
+* api/appsettings.json - `AzureAd:ClientCredentials[0]` changed from a `KeyVault` source with a placeholder URL to a `Base64Encoded` source (the cert is supplied at runtime via a Key Vault reference).
+* infra/modules/appservice.bicep - Replaced the unbound `AzureAd__ClientCertificate` app setting with `AzureAd__ClientCredentials__0__SourceType=Base64Encoded` and `AzureAd__ClientCredentials__0__Base64EncodedValue=@Microsoft.KeyVault(SecretUri=<cert secret>)`, the shape Microsoft.Identity.Web actually reads. The API Managed Identity already holds **Key Vault Secrets User**, so loading the cert from its backing PKCS#12 secret needs no new RBAC.
+
+### Provisioned (live)
+
+* `croesus-api` app settings: added `AzureAd__ClientCredentials__0__SourceType=Base64Encoded` and `AzureAd__ClientCredentials__0__Base64EncodedValue` (Key Vault reference to `kv-croesus-a65e90/secrets/croesus-api-cert`); removed the stale `AzureAd__ClientCertificate`. Restarted the API; it returns 401 + CORS on `/api/me` (healthy). The OBO certificate now loads from Key Vault on the first authenticated call.
+
 ## Changes
 
 ### Added
