@@ -2,19 +2,39 @@ import { getApiToken } from "./getApiToken";
 import type { AccountInfo, IPublicClientApplication } from "@azure/msal-browser";
 
 /**
- * Decoded-claim summary for one leg of the OBO flow, as returned by the API.
- * The API decodes each token server-side and surfaces only these non-sensitive
- * header/payload claims as evidence.
+ * Decoded claims for leg 1 (the inbound SPA->API token A), as returned by the
+ * API. This token is audienced to an API we own, so the API cracks it
+ * server-side and surfaces only these non-sensitive claims as evidence.
  */
-export interface ClaimSummary {
-  /** Audience: the resource the token was minted for. */
+export interface Leg1Claims {
+  /** Audience: the resource the token was minted for (this API). */
   aud: string;
-  /** Delegated scope present on the token (leg 1 only carries access_as_user). */
+  /** Delegated scope present on the token (access_as_user). */
   scp?: string;
-  /** JWT ID: unique per token. Distinct jti across legs proves a real exchange. */
+  /** Application (client) id of the calling SPA. */
+  appid?: string;
+  /** Object id of the signed-in user. */
+  oid?: string;
+  /** JWT ID: unique per token. */
   jti: string;
-  /** Issued-at (epoch seconds). */
-  iat: number;
+  /** Issued-at, epoch seconds (serialized as a string by the API). */
+  iat: string;
+}
+
+/**
+ * Evidence for leg 2 (the API->Graph token B produced by the OBO exchange).
+ * The Graph JWT is intentionally NOT decoded, so distinct issuance is shown via
+ * a different audience plus the OBO result's own correlation id and expiry.
+ */
+export interface Leg2Claims {
+  /** Audience: the downstream resource (Microsoft Graph). */
+  aud: string;
+  /** Scopes granted on token B. */
+  scp?: string;
+  /** MSAL correlation id for the OBO request that minted token B. */
+  correlationId?: string;
+  /** Absolute expiry of token B (ISO-8601). */
+  expiresOn?: string;
 }
 
 /**
@@ -22,13 +42,16 @@ export interface ClaimSummary {
  * On-Behalf-Of exchange so the SPA can prove the tokens are bound, not replayed.
  */
 export interface MeResponse {
-  displayName?: string;
-  userPrincipalName?: string;
+  user?: {
+    displayName?: string;
+    userPrincipalName?: string;
+    id?: string;
+  };
   evidence: {
     /** Token A: SPA -> API. aud == API_CLIENT_ID, scp == access_as_user. */
-    leg1: ClaimSummary;
-    /** Token B: API -> Microsoft Graph (via OBO). Distinct aud and jti from token A. */
-    leg2: ClaimSummary;
+    leg1: Leg1Claims;
+    /** Token B: API -> Microsoft Graph (via OBO). Distinct aud from token A. */
+    leg2: Leg2Claims;
   };
 }
 

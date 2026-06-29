@@ -21,6 +21,15 @@ After CORS was fixed, **Call API** still showed `Failed to fetch` — but the ca
 
 * `croesus-api` app settings: added `AzureAd__ClientCredentials__0__SourceType=Base64Encoded` and `AzureAd__ClientCredentials__0__Base64EncodedValue` (Key Vault reference to `kv-croesus-a65e90/secrets/croesus-api-cert`); removed the stale `AzureAd__ClientCertificate`. Restarted the API; it returns 401 + CORS on `/api/me` (healthy). The OBO certificate now loads from Key Vault on the first authenticated call.
 
+## SPA Evidence Panel Crash Fix (Invalid time value) — 2026-06-29
+
+Once the OBO cert loaded and `/api/me` returned 200, the SPA rendered a blank page with `RangeError: Invalid time value at Date.toISOString`. The API returns two **different** evidence shapes: `leg1 = {aud, scp, appid, oid, jti, iat}` (iat is an epoch-seconds string) and `leg2 = {aud, scp, correlationId, expiresOn}` — leg 2 has no `jti`/`iat` because the Graph JWT is intentionally not decoded. The SPA treated both legs as one `ClaimSummary` and called `new Date(leg2.iat * 1000).toISOString()`; `leg2.iat` was `undefined`, so `new Date(NaN).toISOString()` threw and crashed the render. The user fields were also read at the top level but the API nests them under `user`.
+
+### Modified
+
+* spa/src/api.ts - Replaced the single `ClaimSummary` interface with two leg-specific types (`Leg1Claims`, `Leg2Claims`) that match the real API contract (`iat` is a string; leg 2 carries `correlationId`/`expiresOn` instead of `jti`/`iat`); `MeResponse.user` now models the nested `{ displayName, userPrincipalName, id }` object.
+* spa/src/components/EvidencePanel.tsx - Renders each leg with its own rows; added a `formatIat` helper that never throws on a missing/invalid epoch; leg 2 now shows `aud`/`scp`/`correlationId`/`expiresOn`; the stale "distinct jti" proof bullet was replaced with a "freshly minted token (own correlationId + expiry)" bullet; user identity now read from `data.user`.
+
 ## Changes
 
 ### Added
