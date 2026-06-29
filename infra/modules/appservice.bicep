@@ -71,6 +71,10 @@ resource spaApp 'Microsoft.Web/sites@2024-04-01' = {
     httpsOnly: true
     siteConfig: {
       linuxFxVersion: 'NODE|20-lts'
+      // The SPA is a prebuilt static Vite bundle, not a Node server. Serve the
+      // files from wwwroot with SPA history-fallback so client-side routes and
+      // the MSAL redirect path resolve to index.html.
+      appCommandLine: 'pm2 serve /home/site/wwwroot --no-daemon --spa'
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
       appSettings: [
