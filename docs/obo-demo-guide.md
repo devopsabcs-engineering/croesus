@@ -64,10 +64,15 @@ az keyvault create \
 Run the provisioning script. It creates two single-tenant registrations, the SPA as a public client and the API as a confidential client, exposes the `access_as_user` scope on the API, pre-authorizes the SPA, grants the Microsoft Graph `User.Read` delegated permission, and stores the API certificate in the Key Vault.
 
 ```bash
-KEY_VAULT_NAME="$KEY_VAULT_NAME" ./scripts/provision-app-registrations.sh
+KEY_VAULT_NAME="$KEY_VAULT_NAME" \
+SPA_DEPLOYED_REDIRECT_URI="https://croesus-spa.azurewebsites.net" \
+  ./scripts/provision-app-registrations.sh
 ```
 
 The script prints the identifiers you need next: the SPA client ID, the API client ID, and the derived API scope (`api://<API_CLIENT_ID>/access_as_user`). Combine these with your tenant ID and the Key Vault name when you record the configuration.
+
+> [!IMPORTANT]
+> Register the deployed SPA origin as a redirect URI. The SPA's MSAL config uses `redirectUri: window.location.origin`, so the deployed URL (for example `https://croesus-spa.azurewebsites.net`) must be a SPA-platform redirect URI on the SPA registration. Pass it through `SPA_DEPLOYED_REDIRECT_URI` as shown; otherwise an interactive sign-in from the deployed app fails with `AADSTS50011` (redirect URI mismatch). The local dev URI (`https://localhost:3000`) is always registered.
 
 > [!NOTE]
 > The script is idempotent. It looks up each registration by display name and reuses the existing object, so re-running it does not create duplicates.

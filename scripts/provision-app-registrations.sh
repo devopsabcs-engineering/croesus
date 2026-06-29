@@ -26,7 +26,10 @@
 #   CERT_NAME            (default: croesus-api-cert) Key Vault certificate name.
 #   API_DISPLAY_NAME     (default: "Croesus GPD Central API (mock)")
 #   SPA_DISPLAY_NAME     (default: "Croesus GPD Central SPA (mock)")
-#   SPA_REDIRECT_URI     (default: https://localhost:3000)
+#   SPA_REDIRECT_URI     (default: https://localhost:3000) local dev SPA URI.
+#   SPA_DEPLOYED_REDIRECT_URI (optional) deployed SPA origin, e.g.
+#                        https://croesus-spa.azurewebsites.net. Registered
+#                        alongside SPA_REDIRECT_URI when set.
 #   SIGN_IN_AUDIENCE     (default: AzureADMyOrg) single-tenant demo shape.
 #
 # Outputs (written to $GITHUB_OUTPUT when set, otherwise echoed):
@@ -44,6 +47,7 @@ CERT_NAME="${CERT_NAME:-croesus-api-cert}"
 API_DISPLAY_NAME="${API_DISPLAY_NAME:-Croesus GPD Central API (mock)}"
 SPA_DISPLAY_NAME="${SPA_DISPLAY_NAME:-Croesus GPD Central SPA (mock)}"
 SPA_REDIRECT_URI="${SPA_REDIRECT_URI:-https://localhost:3000}"
+SPA_DEPLOYED_REDIRECT_URI="${SPA_DEPLOYED_REDIRECT_URI:-}"
 SIGN_IN_AUDIENCE="${SIGN_IN_AUDIENCE:-AzureADMyOrg}"
 
 log() { printf '>>> %s\n' "$*" >&2; }
@@ -121,11 +125,18 @@ fi
 ensure_sp "$SPA_ID"
 SPA_OBJ="$(az ad app show --id "$SPA_ID" --query id -o tsv)"
 
-# SPA platform redirect URI (spa, not web). PATCH is authoritative/idempotent.
+# SPA platform redirect URIs (spa, not web). PATCH is authoritative/idempotent.
+# Always register the local dev URI; also register the deployed SPA origin when
+# SPA_DEPLOYED_REDIRECT_URI is provided, otherwise an interactive sign-in from
+# the deployed app fails with AADSTS50011 (redirect URI mismatch).
+SPA_REDIRECT_JSON="\"$SPA_REDIRECT_URI\""
+if [[ -n "$SPA_DEPLOYED_REDIRECT_URI" ]]; then
+  SPA_REDIRECT_JSON="$SPA_REDIRECT_JSON,\"$SPA_DEPLOYED_REDIRECT_URI\""
+fi
 az rest --method PATCH \
   --uri "https://graph.microsoft.com/v1.0/applications/$SPA_OBJ" \
   --headers "Content-Type=application/json" \
-  --body "{\"spa\":{\"redirectUris\":[\"$SPA_REDIRECT_URI\"]}}" >/dev/null
+  --body "{\"spa\":{\"redirectUris\":[$SPA_REDIRECT_JSON]},\"isFallbackPublicClient\":true}" >/dev/null
 
 # -----------------------------------------------------------------------------
 # 3) Expose access_as_user + knownClientApplications + preAuthorizedApplications
