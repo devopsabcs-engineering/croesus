@@ -123,11 +123,24 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: OBO evidence mode
+        run: |
+          if [[ "${{ vars.ENABLE_ROPC_EVIDENCE }}" == "true" ]]; then
+            echo "Headless ROPC smoke + negative tests: **enabled**." >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "> **Headless ROPC evidence is disabled** (\`vars.ENABLE_ROPC_EVIDENCE\` is not \`true\`)."
+              echo "> This tenant enforces MFA via managed Conditional Access, which the ROPC password grant cannot satisfy (\`AADSTS50079\`)."
+              echo "> Validate the OBO flow interactively through the deployed SPA instead; see \`docs/obo-demo-guide.md\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Smoke test (two-leg claim summary)
+        if: vars.ENABLE_ROPC_EVIDENCE == 'true'
         run: |
           chmod +x scripts/*.sh
           bash scripts/smoke-test.sh
       - name: Negative control (gated; fails if a mismatched-audience token is accepted)
+        if: vars.ENABLE_ROPC_EVIDENCE == 'true'
         run: bash scripts/negative-test.sh
       - name: Correlate sign-in legs via Log Analytics
         env:

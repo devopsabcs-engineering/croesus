@@ -95,7 +95,7 @@ az deployment group create \
 
 With the Web Apps in place, the deploy workflow at [../.github/workflows/deploy-croesus.yml](../.github/workflows/deploy-croesus.yml) builds and ships the application code. It authenticates to Azure with an OpenID Connect federated credential, so there is no long-lived deploy secret. It then publishes the [../spa/](../spa/) and [../api/](../api/) projects to the existing `croesus-spa` and `croesus-api` Web Apps. The workflow deploys application code only; it does not provision the infrastructure.
 
-Trigger the workflow from the GitHub Actions tab, or push to the branch the workflow watches. When the run finishes, the post-deploy evidence job has already executed the smoke test and the gated negative tests and written the results to the run summary.
+Trigger the workflow from the GitHub Actions tab, or push to the branch the workflow watches. When the run finishes, the post-deploy evidence job writes its results to the run summary. The headless smoke and negative tests run only when the `ENABLE_ROPC_EVIDENCE` repository variable is `true`; otherwise they are skipped and the run stays green (see the note under Step 3).
 
 ## Step 3: Exercise the flow
 
@@ -108,6 +108,9 @@ You can also run the smoke test directly:
 ```
 
 A passing smoke test confirms the user can sign in, the API accepts the API-audience token, and the OBO call to Graph succeeds.
+
+> [!NOTE]
+> The smoke and negative tests acquire the user token through the resource-owner-password (ROPC) grant, which cannot satisfy multi-factor authentication. In a tenant that enforces MFA for every user (for example, through security defaults or a managed Conditional Access policy), ROPC fails with `AADSTS50079` and no headless token can be obtained. The evidence job therefore gates these two steps behind the `ENABLE_ROPC_EVIDENCE` repository variable, which defaults to off, so the pipeline stays green where MFA is enforced. Set `ENABLE_ROPC_EVIDENCE` to `true` only in a tenant where a dedicated, non-MFA CI test user is allowed. Everywhere else, validate the flow interactively by signing in to the deployed SPA, which completes MFA in the browser and exercises the same OBO exchange.
 
 ## Step 4: Run the negative tests
 
