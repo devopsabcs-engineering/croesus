@@ -132,3 +132,22 @@ Items identified during planning that fall outside current scope.
 * WI-07: Add a `.gitattributes` with `*.sh text eol=lf` so a Windows contributor cannot reintroduce CRLF and break the CI shebang lines (low).
   * Source: Phase 4
   * Dependency: None.
+
+## Operational Bring-Up Addendum — 2026-06-29
+
+### Implementation Deviations
+
+* DD-08: Headless ROPC evidence is unsatisfiable in this tenant. The demo tenant enforces MFA for every user via a Microsoft-managed Conditional Access policy ("Multifactor authentication for Microsoft partners and vendors"), so the smoke/negative ROPC password grant fails with AADSTS50079. These managed policies are not editable/excludable by the tenant admin. Resolution: Option A — gate the two ROPC steps behind ars.ENABLE_ROPC_EVIDENCE (default off, skip cleanly); validate the OBO flow interactively via the deployed SPA. Do NOT modify tenant CA/MFA/security defaults (shared security control).
+* DD-09: The SPA Web App ran the Node 20 runtime but the deployed artifact is a prebuilt static Vite bundle with no Node server, so App Service served its placeholder page. Fix: add ppCommandLine: 'pm2 serve /home/site/wwwroot --no-daemon --spa' to the SPA siteConfig (now in Bicep) and applied live. The plan/Bicep had not specified a startup command for the static SPA.
+
+### Suggested Follow-On Work
+
+* WI-08: Add `isFallbackPublicClient: true` to the SPA app-registration patch in `scripts/provision-app-registrations.sh` (currently only applied to the live app registration) so the public-client/ROPC capability is reproducible (low).
+  * Source: Operational bring-up.
+  * Dependency: None.
+* WI-09: Verify rendered wiki pages + embedded screenshots while signed in to GitHub; if relative image paths do not render in the private wiki, switch to the `[[images/<file>.png]]` GitHub wiki embed syntax (low).
+  * Source: Operational bring-up (wiki publish).
+  * Dependency: Authenticated GitHub session.
+* WI-10: Address the 4 Dependabot alerts (1 high, 3 moderate) on the default branch (medium).
+  * Source: push output.
+  * Dependency: None.

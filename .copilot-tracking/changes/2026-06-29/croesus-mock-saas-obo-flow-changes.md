@@ -145,3 +145,33 @@ Operationalized the demo end to end against the live tenant `aa93b9d9-037d-4f08-
 
 * `TEST_USERNAME` / `TEST_PASSWORD` secrets are a real non-MFA CI test user's credentials and must be set by the user directly (`gh secret set TEST_USERNAME` / `TEST_PASSWORD`); never request or echo these.
 
+## MFA Gating, SPA Serving Fix, and Wiki Evidence — 2026-06-29
+
+The CI test user could not satisfy MFA: this tenant enforces multi-factor authentication for every user via a Microsoft-managed Conditional Access policy, so the ROPC password grant in the smoke/negative tests fails with `AADSTS50079` and the `evidence` job failed on every run. Applied Option A (gate the ROPC steps so they skip cleanly), fixed the SPA static-bundle serving, and published live + pipeline evidence to the repo wiki.
+
+### Modified
+
+* .github/workflows/deploy-croesus.yml - Gated the two ROPC-dependent evidence steps (`Smoke test`, `Negative control`) behind `if: vars.ENABLE_ROPC_EVIDENCE == 'true'` (default off, so they skip rather than fail in MFA tenants), and added an always-on `OBO evidence mode` step that documents whether ROPC evidence is enabled and why it is disabled. The remaining evidence steps (Log Analytics correlation, portal deep links, artifact upload) still run.
+* docs/obo-demo-guide.md - Added a NOTE under Step 3 explaining the ROPC/MFA limitation (`AADSTS50079`), the `ENABLE_ROPC_EVIDENCE` gate (default off), and that the OBO flow is validated interactively through the deployed SPA where MFA is enforced; updated the Step 2 trigger paragraph accordingly.
+* infra/modules/appservice.bicep - Added `appCommandLine: 'pm2 serve /home/site/wwwroot --no-daemon --spa'` to the SPA Web App `siteConfig`. The SPA Web App runs the Node 20 runtime but the deployed artifact is a prebuilt static Vite bundle with no server, so App Service served its default placeholder. Also applied live via `az webapp config set --startup-file`; verified the SPA now renders the OBO demo.
+
+### Added (repo wiki — devopsabcs-engineering/croesus.wiki)
+
+* Home.md - Rewritten as an index linking the two evidence pages.
+* Live-Application-Evidence.md - Deployed endpoints table, SPA landing screenshot, Entra sign-in screenshot, the API `401 / WWW-Authenticate: Bearer` trace, and the interactive-validation note.
+* Pipeline-Execution-Evidence.md - Latest green run (28406696203) summary, job results, evidence-job step breakdown (ROPC steps skipped), and the MFA-gating explanation.
+* images/spa-landing.png, images/entra-signin.png - Screenshots captured against the live endpoints.
+
+### Verified
+
+* Run 28406696203 (push `b4df14a`): all four jobs success; evidence steps 5/6 (ROPC smoke/negative) skipped, steps 7/8/9 success. Pipeline is green.
+* SPA at https://croesus-spa.azurewebsites.net renders the OBO demo after the `pm2 serve` startup fix.
+* Entra sign-in page renders for the SPA client ID + API scope with no app/consent errors.
+* API at https://croesus-api.azurewebsites.net/api/me returns `401 Unauthorized` with `WWW-Authenticate: Bearer`.
+
+### Outstanding (user action)
+
+* Verify the rendered wiki pages and embedded screenshots while signed in to GitHub (the integrated browser is unauthenticated, so it cannot view the private wiki). If a relative image path does not render, replace `![alt](images/<file>.png)` with the GitHub wiki embed `[[images/<file>.png]]`.
+* The live SPA `isFallbackPublicClient=true` change and the `pm2 serve` startup command are applied to the live resources; the startup command is now in Bicep, but `isFallbackPublicClient` is still only live (consider adding it to `scripts/provision-app-registrations.sh` for reproducibility).
+* To run the headless ROPC evidence, set repo variable `ENABLE_ROPC_EVIDENCE=true` only in a tenant that permits a dedicated non-MFA CI test user.
+
