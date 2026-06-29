@@ -56,17 +56,24 @@ claim() {
 
 # Acquire token A (aud = API) via ROPC. Token captured in memory, never printed.
 log "Acquiring token A (aud = API) via ROPC for $API_SCOPE"
-TOKEN_A="$(curl -s -X POST "$TOKEN_ENDPOINT" \
+TOKEN_RESPONSE="$(curl -s -X POST "$TOKEN_ENDPOINT" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   --data-urlencode "grant_type=password" \
   --data-urlencode "client_id=${SPA_CLIENT_ID}" \
   --data-urlencode "scope=${API_SCOPE} openid profile" \
   --data-urlencode "username=${TEST_USERNAME}" \
-  --data-urlencode "password=${TEST_PASSWORD}" \
-  | jq -r '.access_token // empty')"
+  --data-urlencode "password=${TEST_PASSWORD}")"
+TOKEN_A="$(printf '%s' "$TOKEN_RESPONSE" | jq -r '.access_token // empty')"
 
 if [[ -z "$TOKEN_A" ]]; then
+  # Surface only the non-secret error fields (AADSTS code + description). The
+  # token endpoint never echoes the password, so this is safe to print and is
+  # the deterministic signal for triaging ROPC failures in CI.
+  ERR_CODE="$(printf '%s' "$TOKEN_RESPONSE" | jq -r '.error // "unknown"')"
+  ERR_DESC="$(printf '%s' "$TOKEN_RESPONSE" | jq -r '.error_description // "no description"' | head -n 1)"
   printf 'ERROR: failed to acquire token A for the API scope.\n' >&2
+  printf '       error=%s\n' "$ERR_CODE" >&2
+  printf '       error_description=%s\n' "$ERR_DESC" >&2
   exit 1
 fi
 
