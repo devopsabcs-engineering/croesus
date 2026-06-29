@@ -25,6 +25,22 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
+// CORS: the SPA is served from a different origin than this API, so the browser issues a
+// preflighted cross-origin request for GET /api/me (it carries an Authorization header).
+// Allowed origins come from configuration key Cors:AllowedOrigins, supplied at runtime via the
+// App Service setting Cors__AllowedOrigins__<n> (e.g. the deployed SPA URL). No origins are
+// hard-coded; an empty list means no cross-origin caller is permitted.
+const string spaCorsPolicy = "SpaCors";
+var corsAllowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? Array.Empty<string>();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(spaCorsPolicy, policy => policy
+        .WithOrigins(corsAllowedOrigins)
+        .AllowAnyHeader()
+        .WithMethods("GET"));
+});
+
 // Evidence layer: structured, claims-only logging of both OBO legs to Application Insights.
 builder.Services.AddScoped<OboClaimLogger>();
 
@@ -32,6 +48,7 @@ builder.Services.AddControllers();
 
 var app = builder.Build();
 
+app.UseCors(spaCorsPolicy);
 app.UseAuthentication();
 app.UseAuthorization();
 

@@ -129,6 +129,10 @@ resource apiApp 'Microsoft.Web/sites@2024-04-01' = {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
           value: '@Microsoft.KeyVault(SecretUri=${appInsightsConnectionStringSecretUri})'
         }
+        {
+          name: 'Cors__AllowedOrigins__0'
+          value: 'https://${spaApp.properties.defaultHostName}'
+        }
       ]
     }
   }
