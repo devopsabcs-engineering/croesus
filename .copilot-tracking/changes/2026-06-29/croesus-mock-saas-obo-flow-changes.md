@@ -34,6 +34,13 @@ Once the OBO cert loaded and `/api/me` returned 200, the SPA rendered a blank pa
 
 Signed in as `admin@MngEnvMCAP675646.onmicrosoft.com` and clicked **Call API**. `/api/me` returned 200 and the evidence panel rendered both legs: leg 1 `aud = api://bc6338a5-…` with `scp = access_as_user`; leg 2 `aud = https://graph.microsoft.com` with its own `correlationId` and `expiresOn`. All four proof assertions are green — the OBO exchange is bound, not replayed.
 
+## Dependency & Wiki Follow-On (WI-10, WI-09) — 2026-06-29
+
+### Modified
+
+* spa/package.json + spa/package-lock.json - Bumped `vite` `^5.4.11` → `^6.4.3`, which resolves all 4 open Dependabot alerts (vite `server.fs.deny` bypass [high], path-traversal [medium], launch-editor NTLM disclosure [medium], and transitive `esbuild` dev-server request leak [medium] via `esbuild` 0.25.12). `npm install` reports 0 vulnerabilities; `npm run build` passes under vite 6. All four are dev-only dependencies (never shipped in the production bundle).
+* Wiki `Live-Application-Evidence.md` (separate wiki repo) - Switched the two evidence screenshots from `![alt](images/x.png)` to the Gollum `[[images/x.png]]` embed with a bold caption above each, so images render reliably in the private wiki (raw URLs 404 without a token; relative markdown can resolve against the page path). Pushed as wiki commit `4092e35`.
+
 ## Changes
 
 ### Added
