@@ -78,3 +78,138 @@ export async function callApiMe(
 
   return (await res.json()) as MeResponse;
 }
+
+/**
+ * Non-sensitive claims decoded locally from a JWT payload, for evidence display
+ * only. This intentionally surfaces a small, bounded set of claims and never the
+ * raw token. `hasCnf` indicates a proof-of-possession / token-binding (`cnf`)
+ * claim is present without exposing its contents.
+ */
+export interface DecodedTokenClaims {
+  aud?: string;
+  scp?: string;
+  jti?: string;
+  /** Issued-at, epoch seconds (as present in the JWT). */
+  iat?: number;
+  /** True when a `cnf` (confirmation / proof-of-possession) claim is present. */
+  hasCnf: boolean;
+}
+
+/**
+ * Base64url-decode and JSON-parse the payload segment of a JWT, returning only a
+ * bounded set of non-sensitive claims for display. Never throws in a way that
+ * breaks the UI: any malformed input yields a safe partial object with
+ * `hasCnf: false`. The raw token and full payload are never returned or logged.
+ */
+export function decodeJwtClaims(token: string): DecodedTokenClaims {
+  const safe: DecodedTokenClaims = { hasCnf: false };
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return safe;
+
+    const segment = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = segment.padEnd(segment.length + ((4 - (segment.length % 4)) % 4), "=");
+
+    const decoded = decodeURIComponent(
+      atob(padded)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
+    );
+
+    const payload = JSON.parse(decoded) as Record<string, unknown>;
+    return {
+      aud: typeof payload.aud === "string" ? payload.aud : undefined,
+      scp: typeof payload.scp === "string" ? payload.scp : undefined,
+      jti: typeof payload.jti === "string" ? payload.jti : undefined,
+      iat: typeof payload.iat === "number" ? payload.iat : undefined,
+      hasCnf: Object.prototype.hasOwnProperty.call(payload, "cnf"),
+    };
+  } catch {
+    return safe;
+  }
+}
+
+/**
+ * Result of the bad-path negative control: the SPA deliberately replays the
+ * API-audienced token A directly to Microsoft Graph. Contains only safe evidence
+ * metadata — never the raw token.
+ */
+export interface ReplayAttemptResult {
+  attemptedTarget: string;
+  expectedAudience: string;
+  tokenAudience?: string;
+  tokenScope?: string;
+  tokenJti?: string;
+  tokenIssuedAt?: string;
+  hasCnf: boolean;
+  status: number;
+  ok: boolean;
+  bodyPreview: string;
+  interpretation: string;
+}
+
+/** Truncate a response body for safe preview display. */
+function truncateBody(body: string, max = 500): string {
+  if (body.length <= max) return body;
+  return body.slice(0, max) + "…";
+}
+
+/**
+ * Negative control — the WRONG way on purpose. Acquires token A (audienced to
+ * the API) and replays it directly to Microsoft Graph's /me endpoint. Graph
+ * rejects it because the token's audience is the API, not Graph; a 401 is the
+ * EXPECTED, successful outcome of this control.
+ *
+ * The raw token never leaves this function: it is not returned, not logged, and
+ * not placed in React state. Only decoded non-sensitive claims and the Graph
+ * response status/body preview are surfaced.
+ *
+ * This does NOT emit the literal "Token Protection 1008" signal — it is the
+ * audience-bound negative control that demonstrates audience binding via Graph's
+ * 401, distinct from a Conditional Access Token Protection denial.
+ */
+export async function callGraphWithApiTokenWrongWay(
+  instance: IPublicClientApplication,
+  account: AccountInfo
+): Promise<ReplayAttemptResult> {
+  const token = await getApiToken(instance, account); // token A — aud = API
+  const claims = decodeJwtClaims(token); // display only; raw token stays local
+
+  const attemptedTarget = "https://graph.microsoft.com/v1.0/me";
+  const expectedAudience = "https://graph.microsoft.com";
+
+  let res: Response;
+  try {
+    res = await fetch(attemptedTarget, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch (e) {
+    // Unexpected runtime/network failure — not the expected Graph 401.
+    throw new Error(
+      `Replay attempt failed before Graph responded: ${e instanceof Error ? e.message : String(e)}`
+    );
+  }
+
+  const body = await res.text().catch(() => "");
+  const bodyPreview = truncateBody(body);
+
+  const interpretation =
+    res.status === 401
+      ? "Graph rejected the replayed token with 401 because the token's audience is the API, not Graph. This is the expected, successful negative-control result demonstrating audience binding — it is NOT the literal Token Protection 1008 signal."
+      : `Unexpected Graph response (${res.status}). The expected negative-control outcome is a 401 from audience binding.`;
+
+  return {
+    attemptedTarget,
+    expectedAudience,
+    tokenAudience: claims.aud,
+    tokenScope: claims.scp,
+    tokenJti: claims.jti,
+    tokenIssuedAt: claims.iat !== undefined ? new Date(claims.iat * 1000).toISOString() : undefined,
+    hasCnf: claims.hasCnf,
+    status: res.status,
+    ok: res.status === 401, // 401 is the expected success for this control
+    bodyPreview,
+    interpretation,
+  };
+}

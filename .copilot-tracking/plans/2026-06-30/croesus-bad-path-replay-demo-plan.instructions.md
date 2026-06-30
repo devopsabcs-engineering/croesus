@@ -45,48 +45,48 @@ Add a safe, client-only bad-path replay demonstration that reuses the existing A
 
 ## Implementation Checklist
 
-### [ ] Implementation Phase 1: Add Client-Side Replay Attempt
+### [x] Implementation Phase 1: Add Client-Side Replay Attempt
 
 <!-- parallelizable: false -->
 
-* [ ] Step 1.1: Add safe JWT payload decoding in `spa/src/api.ts`
+* [x] Step 1.1: Add safe JWT payload decoding in `spa/src/api.ts`
   * Details: .copilot-tracking/details/2026-06-30/croesus-bad-path-replay-demo-details.md (Lines 16-38)
-* [ ] Step 1.2: Add `callGraphWithApiTokenWrongWay()` in `spa/src/api.ts`
+* [x] Step 1.2: Add `callGraphWithApiTokenWrongWay()` in `spa/src/api.ts`
   * Details: .copilot-tracking/details/2026-06-30/croesus-bad-path-replay-demo-details.md (Lines 40-78)
-* [ ] Step 1.3: Add replay attempt result UI component
+* [x] Step 1.3: Add replay attempt result UI component
   * Details: .copilot-tracking/details/2026-06-30/croesus-bad-path-replay-demo-details.md (Lines 80-106)
-* [ ] Step 1.4: Wire bad-path button and state in `spa/src/App.tsx`
+* [x] Step 1.4: Wire bad-path button and state in `spa/src/App.tsx`
   * Details: .copilot-tracking/details/2026-06-30/croesus-bad-path-replay-demo-details.md (Lines 108-137)
-* [ ] Step 1.5: Validate SPA changes
+* [x] Step 1.5: Validate SPA changes
   * Details: .copilot-tracking/details/2026-06-30/croesus-bad-path-replay-demo-details.md (Lines 139-153)
 
-### [ ] Implementation Phase 2: Update Documentation For Tier 1
+### [x] Implementation Phase 2: Update Documentation For Tier 1
 
 <!-- parallelizable: true -->
 
-* [ ] Step 2.1: Update `docs/obo-demo-guide.md` negative-control section
+* [x] Step 2.1: Update `docs/obo-demo-guide.md` negative-control section
   * Details: .copilot-tracking/details/2026-06-30/croesus-bad-path-replay-demo-details.md (Lines 157-181)
-* [ ] Step 2.2: Update README wrong-versus-right prose
+* [x] Step 2.2: Update README wrong-versus-right prose
   * Details: .copilot-tracking/details/2026-06-30/croesus-bad-path-replay-demo-details.md (Lines 183-207)
-* [ ] Step 2.3: Validate Markdown wording
+* [x] Step 2.3: Validate Markdown wording
   * Details: .copilot-tracking/details/2026-06-30/croesus-bad-path-replay-demo-details.md (Lines 209-224)
 
-### [ ] Implementation Phase 3: Add Focused Tests If Practical
+### [x] Implementation Phase 3: Add Focused Tests If Practical
 
 <!-- parallelizable: false -->
 
-* [ ] Step 3.1: Add JWT decoder unit coverage only if SPA test infrastructure already exists
+* [x] Step 3.1: Add JWT decoder unit coverage only if SPA test infrastructure already exists
   * Details: .copilot-tracking/details/2026-06-30/croesus-bad-path-replay-demo-details.md (Lines 228-252)
 
 ### [ ] Implementation Phase 4: Final Validation
 
 <!-- parallelizable: false -->
 
-* [ ] Step 4.1: Run full focused validation
+* [x] Step 4.1: Run full focused validation
   * Details: .copilot-tracking/details/2026-06-30/croesus-bad-path-replay-demo-details.md (Lines 256-271)
 * [ ] Step 4.2: Exercise deployed or local browser flow
   * Details: .copilot-tracking/details/2026-06-30/croesus-bad-path-replay-demo-details.md (Lines 273-287)
-* [ ] Step 4.3: Record implementation evidence
+* [x] Step 4.3: Record implementation evidence
   * Details: .copilot-tracking/details/2026-06-30/croesus-bad-path-replay-demo-details.md (Lines 289-303)
 
 ### [ ] Deferred Phase: Tier 2 Replay Lab

@@ -119,7 +119,9 @@ A passing smoke test confirms the user can sign in, the API accepts the API-audi
 
 ## Step 4: Run the negative tests
 
-The negative tests prove the audience boundary is enforced, not merely present. They are gated in CI and you can run them on demand:
+The negative tests prove the audience boundary is enforced, not merely present. Use the interactive SPA control first: after signing in, select `Replay API token to Graph (wrong)`. The button replays token A, whose audience is the API, directly to Microsoft Graph and expects Graph to return `401`. That rejection proves Graph refuses the API-audienced token. It is not the literal Token Protection 1008 signal from the customer logs; it is a safe audience-boundary demonstration that sits next to the working OBO path. See [evidence-narrative.md](evidence-narrative.md) for the 1008 evidence boundary.
+
+The script-based negative tests are gated in CI, and you can run them on demand:
 
 ```bash
 ./scripts/negative-test.sh

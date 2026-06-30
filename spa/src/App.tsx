@@ -5,8 +5,14 @@ import {
   useMsal,
 } from "@azure/msal-react";
 import { loginRequest } from "./authConfig";
-import { callApiMe, type MeResponse } from "./api";
+import {
+  callApiMe,
+  callGraphWithApiTokenWrongWay,
+  type MeResponse,
+  type ReplayAttemptResult,
+} from "./api";
 import { EvidencePanel } from "./components/EvidencePanel";
+import { ReplayAttemptPanel } from "./components/ReplayAttemptPanel";
 
 function ContrastPanel() {
   return (
@@ -89,11 +95,19 @@ const secondaryButtonStyle: React.CSSProperties = {
   background: "#5a5a5a",
 };
 
+const replayButtonStyle: React.CSSProperties = {
+  ...buttonStyle,
+  background: "#b00020",
+};
+
 export default function App() {
   const { instance, accounts } = useMsal();
   const [data, setData] = useState<MeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [replay, setReplay] = useState<ReplayAttemptResult | null>(null);
+  const [replayError, setReplayError] = useState<string | null>(null);
+  const [replayLoading, setReplayLoading] = useState(false);
 
   async function handleCallApi() {
     const account = accounts[0];
@@ -108,6 +122,22 @@ export default function App() {
       setData(null);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleReplayToGraph() {
+    const account = accounts[0];
+    if (!account) return;
+    setReplayLoading(true);
+    setReplayError(null);
+    try {
+      const result = await callGraphWithApiTokenWrongWay(instance, account);
+      setReplay(result);
+    } catch (e) {
+      setReplayError(e instanceof Error ? e.message : String(e));
+      setReplay(null);
+    } finally {
+      setReplayLoading(false);
     }
   }
 
@@ -127,6 +157,9 @@ export default function App() {
           <button onClick={handleCallApi} style={buttonStyle} disabled={loading}>
             {loading ? "Calling…" : "Call API"}
           </button>
+          <button onClick={handleReplayToGraph} style={replayButtonStyle} disabled={replayLoading}>
+            {replayLoading ? "Replaying…" : "Replay API token to Graph (wrong)"}
+          </button>
           <SignOutButton />
         </AuthenticatedTemplate>
       </div>
@@ -135,11 +168,21 @@ export default function App() {
         <p style={{ color: "#b00020", fontFamily: "monospace", whiteSpace: "pre-wrap" }}>{error}</p>
       )}
 
+      {replayError && (
+        <p style={{ color: "#b00020", fontFamily: "monospace", whiteSpace: "pre-wrap" }}>
+          {replayError}
+        </p>
+      )}
+
       <AuthenticatedTemplate>
         {data && <EvidencePanel data={data} />}
       </AuthenticatedTemplate>
 
       <ContrastPanel />
+
+      <AuthenticatedTemplate>
+        {replay && <ReplayAttemptPanel result={replay} />}
+      </AuthenticatedTemplate>
     </main>
   );
 }

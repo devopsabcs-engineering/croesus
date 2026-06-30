@@ -68,7 +68,7 @@ sequenceDiagram
 
 ### Wrong versus right
 
-The broken baseline in [assets/app-registration-analysis-findings.md](assets/app-registration-analysis-findings.md) reuses the user's token directly against Graph: one token, one audience, no credential, no API scope. The corrected demo issues two distinct tokens with distinct audiences and distinct `jti` values, and the middle tier authenticates as a confidential client. The audience boundary is the difference between a replay and a real OBO.
+The broken baseline in [assets/app-registration-analysis-findings.md](assets/app-registration-analysis-findings.md) reuses the user's token directly against Graph: one token, one audience, no credential, no API scope. The live demo now shows both sides of that boundary. The good path proves OBO succeeds with distinct audiences, distinct `jti` values, and a confidential middle tier. The safe bad path replays the API token to Graph and shows Graph returning `401`. That UI rejection demonstrates audience enforcement; it does not claim the mock emits the customer's Token Protection 1008 signal.
 
 | Property | Broken baseline (replay) | Corrected demo (OBO) |
 | --- | --- | --- |
