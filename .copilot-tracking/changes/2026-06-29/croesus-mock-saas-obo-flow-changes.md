@@ -30,6 +30,10 @@ Once the OBO cert loaded and `/api/me` returned 200, the SPA rendered a blank pa
 * spa/src/api.ts - Replaced the single `ClaimSummary` interface with two leg-specific types (`Leg1Claims`, `Leg2Claims`) that match the real API contract (`iat` is a string; leg 2 carries `correlationId`/`expiresOn` instead of `jti`/`iat`); `MeResponse.user` now models the nested `{ displayName, userPrincipalName, id }` object.
 * spa/src/components/EvidencePanel.tsx - Renders each leg with its own rows; added a `formatIat` helper that never throws on a missing/invalid epoch; leg 2 now shows `aud`/`scp`/`correlationId`/`expiresOn`; the stale "distinct jti" proof bullet was replaced with a "freshly minted token (own correlationId + expiry)" bullet; user identity now read from `data.user`.
 
+### Verified (end-to-end, live)
+
+Signed in as `admin@MngEnvMCAP675646.onmicrosoft.com` and clicked **Call API**. `/api/me` returned 200 and the evidence panel rendered both legs: leg 1 `aud = api://bc6338a5-…` with `scp = access_as_user`; leg 2 `aud = https://graph.microsoft.com` with its own `correlationId` and `expiresOn`. All four proof assertions are green — the OBO exchange is bound, not replayed.
+
 ## Changes
 
 ### Added
