@@ -4,8 +4,18 @@ function ClaimRow({ label, value, ok }: { label: string; value?: string; ok?: bo
   const color = ok === undefined ? "#333" : ok ? "#0a7d28" : "#b00020";
   return (
     <tr>
-      <td style={{ padding: "4px 12px 4px 0", fontWeight: 600, whiteSpace: "nowrap" }}>{label}</td>
-      <td style={{ padding: "4px 0", fontFamily: "monospace", color, wordBreak: "break-all" }}>
+      <td style={{ padding: "4px 12px 4px 0", fontWeight: 600, whiteSpace: "nowrap", width: 136 }}>
+        {label}
+      </td>
+      <td
+        style={{
+          padding: "4px 0",
+          fontFamily: "monospace",
+          color,
+          overflowWrap: "anywhere",
+          wordBreak: "break-word",
+        }}
+      >
         {value ?? "(n/a)"}
       </td>
     </tr>
@@ -40,6 +50,7 @@ export function ReplayAttemptPanel({ result }: { result: ReplayAttemptResult }) 
           border: graphRejected ? "1px solid #c0e0c0" : "1px solid #f0c0c0",
           borderRadius: 8,
           padding: 16,
+          minWidth: 0,
           background: graphRejected ? "#f3fbf3" : "#fff5f5",
         }}
       >
@@ -47,7 +58,7 @@ export function ReplayAttemptPanel({ result }: { result: ReplayAttemptResult }) 
           {graphRejected ? "✓" : "✗"} Graph status {result.status}
           {graphRejected ? " (expected negative control)" : " (unexpected)"}
         </h4>
-        <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 14 }}>
+        <table style={{ borderCollapse: "collapse", tableLayout: "fixed", width: "100%", fontSize: 14 }}>
           <tbody>
             <ClaimRow label="attempted target" value={result.attemptedTarget} />
             <ClaimRow label="token audience" value={result.tokenAudience} ok={audienceIsNotGraph} />

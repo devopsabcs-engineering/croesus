@@ -22,6 +22,7 @@ function ContrastPanel() {
         <div
           style={{
             flex: "1 1 320px",
+            minWidth: 0,
             border: "1px solid #f0c0c0",
             borderRadius: 8,
             padding: 16,
@@ -39,6 +40,7 @@ function ContrastPanel() {
         <div
           style={{
             flex: "1 1 320px",
+            minWidth: 0,
             border: "1px solid #c0e0c0",
             borderRadius: 8,
             padding: 16,
@@ -142,14 +144,26 @@ export default function App() {
   }
 
   return (
-    <main style={{ maxWidth: 880, margin: "40px auto", padding: "0 16px", fontFamily: "Segoe UI, system-ui, sans-serif" }}>
+    <main
+      style={{
+        boxSizing: "border-box",
+        maxWidth: 880,
+        width: "100%",
+        margin: "40px auto",
+        padding: "0 16px",
+        overflowX: "hidden",
+        fontFamily: "Segoe UI, system-ui, sans-serif",
+      }}
+    >
       <h1>Croesus — On-Behalf-Of flow demo</h1>
       <p style={{ color: "#555" }}>
         The SPA requests only the API scope and never a Microsoft Graph scope. The API performs the
         OBO exchange and returns decoded-claim evidence proving the tokens are bound, not replayed.
       </p>
 
-      <div style={{ display: "flex", gap: 12, alignItems: "center", margin: "16px 0" }}>
+      <div
+        style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", margin: "16px 0" }}
+      >
         <UnauthenticatedTemplate>
           <SignInButton />
         </UnauthenticatedTemplate>

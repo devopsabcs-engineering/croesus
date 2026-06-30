@@ -24,8 +24,18 @@ function ClaimRow({ label, value, ok }: { label: string; value?: string; ok?: bo
   const color = ok === undefined ? "#333" : ok ? "#0a7d28" : "#b00020";
   return (
     <tr>
-      <td style={{ padding: "4px 12px 4px 0", fontWeight: 600, whiteSpace: "nowrap" }}>{label}</td>
-      <td style={{ padding: "4px 0", fontFamily: "monospace", color, wordBreak: "break-all" }}>
+      <td style={{ padding: "4px 12px 4px 0", fontWeight: 600, whiteSpace: "nowrap", width: 112 }}>
+        {label}
+      </td>
+      <td
+        style={{
+          padding: "4px 0",
+          fontFamily: "monospace",
+          color,
+          overflowWrap: "anywhere",
+          wordBreak: "break-word",
+        }}
+      >
         {value ?? "(n/a)"}
       </td>
     </tr>
@@ -48,12 +58,13 @@ function LegCard({
         borderRadius: 8,
         padding: 16,
         flex: "1 1 320px",
+        minWidth: 0,
         background: "#fafafa",
       }}
     >
       <h4 style={{ margin: "0 0 4px" }}>{title}</h4>
       <p style={{ margin: "0 0 12px", color: "#555", fontSize: 13 }}>{subtitle}</p>
-      <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 14 }}>
+      <table style={{ borderCollapse: "collapse", tableLayout: "fixed", width: "100%", fontSize: 14 }}>
         <tbody>{children}</tbody>
       </table>
     </div>
