@@ -78,6 +78,25 @@ The broken baseline in [assets/app-registration-analysis-findings.md](assets/app
 | Exposed API scope | None | `access_as_user` |
 | `jti` across legs | Identical (replay) | Distinct (new issuance) |
 
+### App registration comparison: mock versus real
+
+The demo runs two registrations precisely because the three real Croesus registrations lack the pieces a standards OBO needs. The real environments (`dev-dev`, `dev-prod`, `prod-prod`) share one minimal SPA-only shape; the mock splits the work into a public SPA and a credentialed API.
+
+| Field | Mock SPA | Mock API | Real SPA (all three environments) |
+| --- | --- | --- | --- |
+| Role in flow | Public client (front end) | Confidential middle tier | Single SPA, no middle tier |
+| signInAudience | AzureADMyOrg | AzureADMyOrg | AzureADMyOrg |
+| Platform | SPA (auth code + PKCE) | API / daemon | SPA |
+| Client secret | None | None | None |
+| Certificate | None | Self-signed cert in Key Vault | None |
+| Exposed API scope | None | `access_as_user` | None |
+| Application ID URI | None | `api://<api-client-id>` | None |
+| Pre-authorized client | n/a | Mock SPA | None |
+| Graph permissions | None (requests the API scope) | `User.Read` (delegated) | `User.Read` (delegated) |
+| Performs standards OBO | No (by design) | Yes (the middle tier) | No (cannot) |
+
+The decisive row is the credentialed API that exposes a scope: the mock has it, none of the three real registrations do. That single difference is why the real second hop can only be a replayed user token, while the mock mints a fresh, audience-bound token B. See [assets/app-registration-analysis-findings.md](assets/app-registration-analysis-findings.md#verified-comparison) for the full real-registration matrix.
+
 ### Prerequisites
 
 - An Azure subscription and a single Microsoft Entra tenant where you can create app registrations and grant admin consent.
@@ -109,3 +128,42 @@ For the full walk-through and the question-by-question proof, see the demo guide
 | [docs/obo-demo-guide.md](docs/obo-demo-guide.md) | Provision, deploy, exercise the flow, and interpret the evidence. |
 | [docs/evidence-narrative.md](docs/evidence-narrative.md) | Maps the escalation-packet questions to the demo's concrete evidence. |
 | [docs/configuration-contract.md](docs/configuration-contract.md) | Authoritative catalog of every configuration value the demo consumes. |
+
+## Tier 2 replay lab (deferred)
+
+The live demo today ships Tier 1 only: a safe, client-only negative control that replays the API-audienced token to Microsoft Graph and shows the expected `401` audience rejection. Tier 1 needs no tenant changes and proves audience binding without introducing any vulnerability.
+
+Tier 2 would reproduce the customer's server-side replay shape more faithfully: the SPA acquires a real Microsoft Graph token, forwards it to an API endpoint, and the API replays it from server-side context — the same unbound-token pattern the sign-in logs attribute to the Croesus AWS backend. Tier 2 is intentionally deferred behind its own plan (follow-on item WI-01) because it introduces a deliberate token-forwarding weakness and requires tenant and app-registration changes.
+
+Tier 2 prerequisites (deferred):
+
+- Grant the SPA Microsoft Graph `User.Read` delegated consent.
+- Add the `VITE_ENABLE_REPLAY_DEMO=false` and `Demo:EnableReplay=false` feature gates, off by default.
+- Add an API-authenticated, fixed-target replay endpoint with token-redaction tests.
+- Route the deploy through a manually approved replay-lab environment.
+
+Tier 2 reproduces the replay mechanics. It does not, on its own, emit the literal Token Protection `1008` ("unbound") status — that value is a Conditional Access sign-in-log signal, not an HTTP response (see the next section).
+
+## Entra ID licensing for the Tier 2 replay lab
+
+We investigated whether the demo tenant holds the Entra ID tier required to observe the customer's Token Protection `1008` signal. The prerequisites are present.
+
+The term carries two distinct requirements:
+
+- Reading the `1008` "unbound" status from sign-in logs is telemetry available with Entra ID P1 or P2 sign-in logs.
+- Enforcing token protection — the Conditional Access grant control **Require token protection for sign-in sessions** (preview) — requires **Microsoft Entra ID P2**.
+
+Tenant findings (`MngEnvMCAP675646.onmicrosoft.com`, queried 2026-06-30 via Microsoft Graph `subscribedSkus`):
+
+| Service plan | Capability | Provisioning status |
+| --- | --- | --- |
+| `AAD_PREMIUM_P2` | Microsoft Entra ID P2 (Token Protection, risk-based Conditional Access) | Success |
+| `AAD_PREMIUM` | Microsoft Entra ID P1 (Conditional Access, sign-in logs) | Success |
+| `MFA_PREMIUM` | Multifactor authentication | Success |
+
+These plans are delivered by the `Microsoft_365_E5_(no_Teams)` SKU (5 seats, 2 consumed), so additional seats are available for lab service accounts.
+
+Conclusion and caveat:
+
+- **Licensing: present.** Entra ID P2 is provisioned, so a Conditional Access token-protection policy and sign-in-log inspection are both available to the lab.
+- **Feature coverage: partial (preview).** "Require token protection for sign-in sessions" is in preview and currently enforces on a limited set of clients and resources (native Windows desktop apps to Exchange Online and SharePoint Online), not arbitrary browser or SPA calls to Microsoft Graph. The lab can configure the control and read the unbound status signal, but observable enforcement of a SPA-to-Graph replay may not trigger until coverage expands. Confirm the current support matrix when the Tier 2 plan is written (follow-on item WI-02).
