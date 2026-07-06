@@ -1,4 +1,5 @@
 import { getApiToken } from "./getApiToken";
+import { getGraphToken } from "./getGraphToken";
 import type { AccountInfo, IPublicClientApplication } from "@azure/msal-browser";
 
 /**
@@ -212,4 +213,93 @@ export async function callGraphWithApiTokenWrongWay(
     bodyPreview,
     interpretation,
   };
+}
+
+/**
+ * Claims-only evidence returned by the API's gated Tier 2a replay endpoint
+ * (POST /api/replay). Mirrors the ReplayController response contract: the server
+ * forwards the SPA-supplied Graph token to a FIXED Graph target and reports only
+ * decoded, non-sensitive claims plus the Graph response status. The raw token is
+ * never echoed by the server and never appears here.
+ */
+export interface ServerReplayEvidence {
+  /** Fixed Graph target the server presented the forwarded token to. */
+  attemptedTarget: string;
+  /** Audience of the forwarded Graph token (decoded server-side). */
+  tokenAudience?: string;
+  /** Delegated scope on the forwarded Graph token. */
+  tokenScope?: string;
+  /** JWT ID of the forwarded Graph token. */
+  tokenJti?: string;
+  /** Issued-at of the forwarded Graph token (ISO-8601, serialized by the API). */
+  tokenIssuedAt?: string;
+  /** True when the forwarded token carries a `cnf` (proof-of-possession) claim. */
+  hasCnf: boolean;
+  /** HTTP status Graph returned to the server's replayed request. */
+  status: number;
+  /** Server's own outcome flag for the replay attempt. */
+  ok: boolean;
+  /** Server-authored interpretation of the outcome. */
+  interpretation: string;
+}
+
+/**
+ * Result of the GATED Tier 2a server-side replay negative control. Combines the
+ * server's ReplayAttempt evidence with a LOCAL decode of the same forwarded Graph
+ * token (for display parity with leg 2). The raw Graph token is never returned,
+ * logged, or placed in React state — only bounded, non-sensitive claims.
+ *
+ * This reproduces the replay SHAPE (a token acquired in one place, presented from
+ * another), NOT the literal Conditional Access "Token Protection 1008" signal.
+ */
+export interface ServerReplayResult {
+  /** Evidence returned by the API's replay endpoint. */
+  server: ServerReplayEvidence;
+  /** Non-sensitive claims decoded locally from the forwarded Graph token. */
+  forwardedGraphToken: DecodedTokenClaims;
+}
+
+/**
+ * GATED Tier 2a demo — the WRONG way on purpose, server-side. Acquires token A
+ * (audienced to the API, used ONLY as the `Authorization` bearer so the endpoint's
+ * `[Authorize]` passes) AND a Microsoft Graph token (forwarded in the request
+ * body). POSTs `{ graphToken }` to {VITE_API_BASE_URL}/api/replay; the API replays
+ * the forwarded token to a fixed Graph target server-side and returns claims-only
+ * evidence.
+ *
+ * Security invariants:
+ *   - The API token is the `Authorization` credential; the Graph token is only in
+ *     the body (never a header, never the API's audience).
+ *   - The forwarded Graph token is decoded LOCALLY for display; the raw token is
+ *     never returned or stored — only bounded, non-sensitive claims.
+ *
+ * This reproduces the replay SHAPE, not the literal Token Protection 1008 signal.
+ */
+export async function callApiReplay(
+  instance: IPublicClientApplication,
+  account: AccountInfo
+): Promise<ServerReplayResult> {
+  const apiToken = await getApiToken(instance, account); // token A — Authorization only
+  const graphToken = await getGraphToken(instance, account); // forwarded in body only
+  const forwardedGraphToken = decodeJwtClaims(graphToken); // display only; raw token stays local
+  const baseUrl = import.meta.env.VITE_API_BASE_URL.replace(/\/+$/, "");
+
+  const res = await fetch(`${baseUrl}/api/replay`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ graphToken }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(
+      `POST /api/replay failed: ${res.status} ${res.statusText} ${body}`.trim()
+    );
+  }
+
+  const server = (await res.json()) as ServerReplayEvidence;
+  return { server, forwardedGraphToken };
 }

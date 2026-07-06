@@ -31,6 +31,8 @@
 #                        https://croesus-spa.azurewebsites.net. Registered
 #                        alongside SPA_REDIRECT_URI when set.
 #   SIGN_IN_AUDIENCE     (default: AzureADMyOrg) single-tenant demo shape.
+#   STATE_FILE           (default: .demo-state.json) machine-readable record of
+#                        created object ids used by the reversible teardown.
 #
 # Outputs (written to $GITHUB_OUTPUT when set, otherwise echoed):
 #   api_client_id, spa_client_id, api_scope
@@ -49,8 +51,19 @@ SPA_DISPLAY_NAME="${SPA_DISPLAY_NAME:-Croesus GPD Central SPA (mock)}"
 SPA_REDIRECT_URI="${SPA_REDIRECT_URI:-https://localhost:3000}"
 SPA_DEPLOYED_REDIRECT_URI="${SPA_DEPLOYED_REDIRECT_URI:-}"
 SIGN_IN_AUDIENCE="${SIGN_IN_AUDIENCE:-AzureADMyOrg}"
+STATE_FILE="${STATE_FILE:-.demo-state.json}"
 
 log() { printf '>>> %s\n' "$*" >&2; }
+
+# Merge a single key/value into the JSON state file so the reversible teardown
+# can delete exactly the objects this script created. Seeds an empty object on
+# first use; idempotent (re-recording the same key overwrites in place).
+record_state() {
+  local key="$1" value="$2" tmp
+  [[ -f "$STATE_FILE" ]] || echo '{}' > "$STATE_FILE"
+  tmp="$(mktemp)"
+  jq --arg v "$value" ".$key = \$v" "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
+}
 
 # Portable UUID generator. Uses uuidgen when present (Linux CI), otherwise falls
 # back to the kernel RNG or PowerShell so the script also runs under Git Bash on
@@ -245,6 +258,36 @@ az ad app permission add \
   --api "$API_ID" \
   --api-permissions "$SCOPE_ID=Scope" >/dev/null 2>&1 || true
 az ad app permission admin-consent --id "$SPA_ID" >/dev/null
+
+# -----------------------------------------------------------------------------
+# 7) SPA -> Microsoft Graph User.Read (delegated) + admin consent (Tier 2).
+#    The SPA acquires a REAL Graph token so the Tier 2a server-side replay has a
+#    genuine downstream token to forward. This materializes as an
+#    oauth2PermissionGrant on the SPA service principal; its id is recorded to
+#    the state file so teardown-app-registrations.sh can revoke it exactly.
+#    The existing API-only Graph grant (section 5) is intentionally kept.
+# -----------------------------------------------------------------------------
+log "Adding SPA -> Microsoft Graph User.Read (delegated) + admin consent (Tier 2)"
+az ad app permission add \
+  --id "$SPA_ID" \
+  --api "$GRAPH_APP_ID" \
+  --api-permissions "$GRAPH_USER_READ=Scope" >/dev/null 2>&1 || true
+az ad app permission admin-consent --id "$SPA_ID" >/dev/null
+
+# Resolve and record the SPA -> Graph delegated grant id for reversible teardown.
+SPA_SP_ID="$(az ad sp show --id "$SPA_ID" --query id -o tsv 2>/dev/null || true)"
+GRAPH_SP_ID="$(az ad sp show --id "$GRAPH_APP_ID" --query id -o tsv 2>/dev/null || true)"
+if [[ -n "$SPA_SP_ID" && -n "$GRAPH_SP_ID" ]]; then
+  SPA_GRAPH_GRANT_ID="$(az rest --method GET \
+    --uri "https://graph.microsoft.com/v1.0/oauth2PermissionGrants?\$filter=clientId eq '$SPA_SP_ID'" \
+    --query "value[?resourceId=='$GRAPH_SP_ID'] | [0].id" -o tsv 2>/dev/null || true)"
+  if [[ -n "$SPA_GRAPH_GRANT_ID" && "$SPA_GRAPH_GRANT_ID" != "None" ]]; then
+    log "Recording SPA -> Graph grant id to $STATE_FILE"
+    record_state spaGraphGrant "$SPA_GRAPH_GRANT_ID"
+  else
+    log "SPA -> Graph grant id not resolved yet (consent may lag); teardown will fall back to a filter query"
+  fi
+fi
 
 # -----------------------------------------------------------------------------
 # Outputs (non-secret). Certificate/credential is intentionally never emitted.

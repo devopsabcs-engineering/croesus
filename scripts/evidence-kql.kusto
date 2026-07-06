@@ -6,8 +6,18 @@
 // the API's App Insights claim logging of both token legs.
 //
 // Run each query block on its own (Log Analytics executes one query at a time).
-// Adjust the AppDisplayName / ResourceDisplayName literals to match the display
-// names of your provisioned app registrations if they differ.
+// The AppDisplayName / ResourceDisplayName literals below match the provisioned
+// mock registrations, "Croesus GPD Central SPA (mock)" and "Croesus GPD Central
+// API (mock)". Change them only if you overrode SPA_DISPLAY_NAME /
+// API_DISPLAY_NAME when running scripts/provision-app-registrations.sh.
+//
+// PRIMARY Tier 2a evidence is NOT in these sign-in logs: the API emits a
+// distinct App Insights custom event named "ReplayAttempt" for each gated
+// server-side replay, kept separate from the OBO "TokenExchange" event so the
+// two never mix. Query it in Application Insights (not Log Analytics), e.g.:
+//   customEvents | where name == "ReplayAttempt" | order by timestamp desc
+// The queries below CORROBORATE that primary evidence from the tenant sign-in
+// logs.
 
 // =============================================================================
 // Query 1 - Interactive SPA sign-in (leg 0: user -> SPA)
@@ -15,7 +25,7 @@
 // =============================================================================
 SigninLogs
 | where TimeGenerated > ago(1h)
-| where AppDisplayName == "Croesus SPA"
+| where AppDisplayName == "Croesus GPD Central SPA (mock)"
 | project TimeGenerated, CorrelationId, AppDisplayName, ResourceDisplayName, UserPrincipalName, Status
 | sort by TimeGenerated asc
 
@@ -30,7 +40,7 @@ SigninLogs
 // =============================================================================
 AADNonInteractiveUserSignInLogs
 | where TimeGenerated > ago(1h)
-| where AppDisplayName == "Croesus API" or ResourceDisplayName == "Microsoft Graph"
+| where AppDisplayName == "Croesus GPD Central API (mock)" or ResourceDisplayName == "Microsoft Graph"
 | project TimeGenerated, CorrelationId, AppDisplayName, ResourceDisplayName,
           UserPrincipalName, ResourceIdentity, Status
 | sort by TimeGenerated asc
@@ -52,3 +62,55 @@ AADNonInteractiveUserSignInLogs
 | project TimeGenerated, UserPrincipalName, AppDisplayName, ResourceDisplayName,
           bindingStatus, bindingStatusCode
 | sort by TimeGenerated desc
+
+// =============================================================================
+// Query 4 - Unbound / 1008 evidence (Tier 2b, SUPPORTED-RESOURCE EXHIBIT ONLY)
+// Surfaces non-interactive sign-ins that Token Protection evaluated as Unbound
+// with signInSessionStatusCode 1008 ("the client isn't integrated with the
+// platform broker, such as Windows Account Manager (WAM)"). This populates ONLY
+// when a report-only (or enforced) Token Protection CA policy is in scope for a
+// native-app client reaching Exchange Online / SharePoint Online / Teams; it
+// will NOT appear for the browser SPA -> custom API -> Graph flow. Provision the
+// report-only policy with scripts/provision-ca-policy.sh first.
+// =============================================================================
+AADNonInteractiveUserSignInLogs
+| where TimeGenerated > ago(7d)
+| where TokenProtectionStatusDetails != ""
+| extend parsed = parse_json(TokenProtectionStatusDetails)
+| extend bindingStatus     = tostring(parsed["signInSessionStatus"])     // "Unbound"
+| extend bindingStatusCode = tostring(parsed["signInSessionStatusCode"]) // "1008"
+| where bindingStatusCode == "1008"
+| project TimeGenerated, UserPrincipalName, AppDisplayName, ResourceDisplayName,
+          IPAddress, bindingStatus, bindingStatusCode, CorrelationId, Id
+| sort by TimeGenerated desc
+
+// =============================================================================
+// Query 5 - Correlate the two legs (interactive SPA sign-in <-> non-interactive
+// second leg). Joins SigninLogs (leg 1, interactive) to
+// AADNonInteractiveUserSignInLogs (leg 2, non-interactive) on CorrelationId +
+// UserPrincipalName, so the two legs of one session sit side by side: distinct
+// resources, distinct IPs, and (when a Token Protection policy is in scope) the
+// leg-2 binding status. CorrelationId is best-effort (derived from
+// client-passed parameters), so the join also pins UserPrincipalName; widen the
+// time window or add UniqueTokenIdentifier if a session does not line up.
+// =============================================================================
+let interactive =
+    SigninLogs
+    | where TimeGenerated > ago(1d)
+    | where AppDisplayName == "Croesus GPD Central SPA (mock)"
+    | project L1_Time=TimeGenerated, CorrelationId, UserPrincipalName,
+              L1_IP=IPAddress, L1_Resource=ResourceDisplayName,
+              L1_UniqueTokenId=UniqueTokenIdentifier;
+let secondLeg =
+    AADNonInteractiveUserSignInLogs
+    | where TimeGenerated > ago(1d)
+    | extend tp = parse_json(TokenProtectionStatusDetails)
+    | project L2_Time=TimeGenerated, CorrelationId, UserPrincipalName,
+              L2_IP=IPAddress, L2_Resource=ResourceDisplayName, L2_App=AppDisplayName,
+              L2_Bind=tostring(tp["signInSessionStatus"]),
+              L2_Code=tostring(tp["signInSessionStatusCode"]);
+interactive
+| join kind=inner secondLeg on CorrelationId, UserPrincipalName
+| project UserPrincipalName, CorrelationId, L1_Time, L1_IP, L1_Resource,
+          L2_Time, L2_IP, L2_App, L2_Resource, L2_Bind, L2_Code
+| sort by L1_Time desc

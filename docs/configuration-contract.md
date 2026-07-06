@@ -39,6 +39,10 @@ Each row below names one value, where it is defined, and every component that re
 | Key Vault name | `KEY_VAULT_NAME` | Bicep output | not used | referenced in Key Vault URI | `keyVaultName` | `vars.KEY_VAULT_NAME` |
 | Log Analytics workspace ID | `LOG_ANALYTICS_WORKSPACE_ID` | Bicep output (workspace customer ID) | not used | not used | derived output | `vars.LOG_ANALYTICS_WORKSPACE_ID` |
 | Application Insights connection string | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Bicep output (App Insights resource), stored in Key Vault | not used | `APPLICATIONINSIGHTS_CONNECTION_STRING` (App Service Key Vault reference) | `appInsightsConnectionString` | not used (resolved at runtime via Key Vault reference, not the workflow) |
+| Replay demo endpoint toggle | `Demo:EnableReplay` | Fixed convention in this contract, default `false` | not used | `Demo__EnableReplay` (set directly in Bicep app settings) | not used | not used |
+| Tier 2 replay UI toggle | `VITE_ENABLE_REPLAY_DEMO` | Fixed convention in this contract, default `false` | `VITE_ENABLE_REPLAY_DEMO` | not used | not used | `vars.VITE_ENABLE_REPLAY_DEMO` |
+| SPA Graph delegated scope | `VITE_GRAPH_SCOPE` | Fixed convention in this contract, default `User.Read` | `VITE_GRAPH_SCOPE` | not used | not used | `vars.VITE_GRAPH_SCOPE` |
+| Microsoft Graph base URL | `VITE_GRAPH_BASE_URL` | Fixed convention in this contract, optional, default `https://graph.microsoft.com/v1.0` | `VITE_GRAPH_BASE_URL` | not used | not used | `vars.VITE_GRAPH_BASE_URL` |
 
 ## Deploy identity values
 
@@ -62,7 +66,7 @@ The following value is a credential. It is managed exclusively in Key Vault and 
 | CI test user password | `TEST_PASSWORD` | Dedicated CI test user, stored as a GitHub Actions secret | `smoke-test.sh` / `negative-test.sh` ROPC token A acquisition | GitHub Actions secret only |
 
 > [!IMPORTANT]
-> The SPA requests only `API_SCOPE`. No Microsoft Graph scope appears anywhere in SPA configuration. Graph access happens only inside the API through the On-Behalf-Of exchange.
+> By default the SPA requests only `API_SCOPE`, and no Microsoft Graph scope appears in SPA configuration. Graph access happens inside the API through the On-Behalf-Of exchange. The Tier 2 replay demo is an intentional, gated exception: when `VITE_ENABLE_REPLAY_DEMO` is `true`, the SPA also requests the `VITE_GRAPH_SCOPE` delegated scope (default `User.Read`) to demonstrate token replay behavior. This exception stays disabled unless the toggle is explicitly set.
 
 ## How a new value enters the contract
 

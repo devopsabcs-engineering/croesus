@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "3645776829124890494"
+      "templateHash": "13953874713249995827"
     }
   },
   "parameters": {
@@ -302,7 +302,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "14690687347676418664"
+              "templateHash": "16033790434213612329"
             }
           },
           "parameters": {
@@ -413,6 +413,7 @@
                 "httpsOnly": true,
                 "siteConfig": {
                   "linuxFxVersion": "NODE|20-lts",
+                  "appCommandLine": "pm2 serve /home/site/wwwroot --no-daemon --spa",
                   "ftpsState": "Disabled",
                   "minTlsVersion": "1.2",
                   "appSettings": [
@@ -464,18 +465,31 @@
                       "value": "[parameters('apiAudience')]"
                     },
                     {
-                      "name": "AzureAd__ClientCertificate",
+                      "name": "AzureAd__ClientCredentials__0__SourceType",
+                      "value": "Base64Encoded"
+                    },
+                    {
+                      "name": "AzureAd__ClientCredentials__0__Base64EncodedValue",
                       "value": "[format('@Microsoft.KeyVault(SecretUri={0})', variables('certSecretUri'))]"
                     },
                     {
                       "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
                       "value": "[format('@Microsoft.KeyVault(SecretUri={0})', variables('appInsightsConnectionStringSecretUri'))]"
+                    },
+                    {
+                      "name": "Cors__AllowedOrigins__0",
+                      "value": "[format('https://{0}', reference(resourceId('Microsoft.Web/sites', parameters('spaAppName')), '2024-04-01').defaultHostName)]"
+                    },
+                    {
+                      "name": "Demo__EnableReplay",
+                      "value": "false"
                     }
                   ]
                 }
               },
               "dependsOn": [
-                "[resourceId('Microsoft.Web/serverfarms', parameters('appServicePlanName'))]"
+                "[resourceId('Microsoft.Web/serverfarms', parameters('appServicePlanName'))]",
+                "[resourceId('Microsoft.Web/sites', parameters('spaAppName'))]"
               ]
             }
           ],
@@ -555,7 +569,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "17683638907688591719"
+              "templateHash": "6001086187661636596"
             }
           },
           "parameters": {
@@ -614,7 +628,7 @@
                 },
                 "enableRbacAuthorization": true,
                 "enableSoftDelete": true,
-                "softDeleteRetentionInDays": 7,
+                "softDeleteRetentionInDays": 90,
                 "publicNetworkAccess": "Enabled"
               }
             },

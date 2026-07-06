@@ -7,12 +7,18 @@ import {
 import { loginRequest } from "./authConfig";
 import {
   callApiMe,
+  callApiReplay,
   callGraphWithApiTokenWrongWay,
   type MeResponse,
   type ReplayAttemptResult,
+  type ServerReplayResult,
 } from "./api";
 import { EvidencePanel } from "./components/EvidencePanel";
-import { ReplayAttemptPanel } from "./components/ReplayAttemptPanel";
+import { ReplayAttemptPanel, ServerReplayPanel } from "./components/ReplayAttemptPanel";
+
+// GATED Tier 2a demo. The server-side replay section renders only when this build
+// flag is exactly the string "true"; with the gate off, nothing Tier 2 is shown.
+const replayDemoEnabled = import.meta.env.VITE_ENABLE_REPLAY_DEMO === "true";
 
 function ContrastPanel() {
   return (
@@ -110,6 +116,9 @@ export default function App() {
   const [replay, setReplay] = useState<ReplayAttemptResult | null>(null);
   const [replayError, setReplayError] = useState<string | null>(null);
   const [replayLoading, setReplayLoading] = useState(false);
+  const [serverReplay, setServerReplay] = useState<ServerReplayResult | null>(null);
+  const [serverReplayError, setServerReplayError] = useState<string | null>(null);
+  const [serverReplayLoading, setServerReplayLoading] = useState(false);
 
   async function handleCallApi() {
     const account = accounts[0];
@@ -140,6 +149,22 @@ export default function App() {
       setReplay(null);
     } finally {
       setReplayLoading(false);
+    }
+  }
+
+  async function handleServerReplay() {
+    const account = accounts[0];
+    if (!account) return;
+    setServerReplayLoading(true);
+    setServerReplayError(null);
+    try {
+      const result = await callApiReplay(instance, account);
+      setServerReplay(result);
+    } catch (e) {
+      setServerReplayError(e instanceof Error ? e.message : String(e));
+      setServerReplay(null);
+    } finally {
+      setServerReplayLoading(false);
     }
   }
 
@@ -174,6 +199,15 @@ export default function App() {
           <button onClick={handleReplayToGraph} style={replayButtonStyle} disabled={replayLoading}>
             {replayLoading ? "Replaying…" : "Replay API token to Graph (wrong)"}
           </button>
+          {replayDemoEnabled && (
+            <button
+              onClick={handleServerReplay}
+              style={replayButtonStyle}
+              disabled={serverReplayLoading}
+            >
+              {serverReplayLoading ? "Replaying…" : "Server-side replay (Tier 2a, wrong)"}
+            </button>
+          )}
           <SignOutButton />
         </AuthenticatedTemplate>
       </div>
@@ -188,6 +222,12 @@ export default function App() {
         </p>
       )}
 
+      {serverReplayError && (
+        <p style={{ color: "#b00020", fontFamily: "monospace", whiteSpace: "pre-wrap" }}>
+          {serverReplayError}
+        </p>
+      )}
+
       <AuthenticatedTemplate>
         {data && <EvidencePanel data={data} />}
       </AuthenticatedTemplate>
@@ -197,6 +237,12 @@ export default function App() {
       <AuthenticatedTemplate>
         {replay && <ReplayAttemptPanel result={replay} />}
       </AuthenticatedTemplate>
+
+      {replayDemoEnabled && (
+        <AuthenticatedTemplate>
+          {serverReplay && <ServerReplayPanel result={serverReplay} />}
+        </AuthenticatedTemplate>
+      )}
     </main>
   );
 }

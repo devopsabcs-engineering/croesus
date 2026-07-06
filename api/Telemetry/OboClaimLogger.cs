@@ -75,6 +75,35 @@ public sealed class OboClaimLogger
     }
 
     /// <summary>
+    /// Records a single deliberate token-replay attempt (Tier 2 negative control). The server re-presents a
+    /// client-forwarded Graph token to a fixed target and captures the claims-only outcome. All values pass
+    /// through <see cref="Redact"/>, so the forwarded token — or any token-shaped value — is never logged.
+    /// Emitted as the distinct <c>ReplayAttempt</c> event so replay evidence queries stay separate from the
+    /// legitimate <c>OboExchange</c> path, which is left unchanged.
+    /// </summary>
+    public void LogReplayAttempt(IReadOnlyDictionary<string, string?> replayEvidence)
+    {
+        var properties = new Dictionary<string, string>();
+        foreach (var (key, value) in replayEvidence)
+        {
+            properties[$"replay.{key}"] = Redact(value);
+        }
+
+        _telemetry?.TrackEvent("ReplayAttempt", properties);
+
+        _logger.LogInformation(
+            "Replay attempt: replay.attemptedTarget={Target} replay.tokenAudience={Aud} replay.tokenScope={Scp} " +
+            "replay.tokenJti={Jti} replay.hasCnf={HasCnf} replay.status={Status} replay.ok={Ok}",
+            Redact(GetOrEmpty(replayEvidence, "attemptedTarget")),
+            Redact(GetOrEmpty(replayEvidence, "tokenAudience")),
+            Redact(GetOrEmpty(replayEvidence, "tokenScope")),
+            Redact(GetOrEmpty(replayEvidence, "tokenJti")),
+            Redact(GetOrEmpty(replayEvidence, "hasCnf")),
+            Redact(GetOrEmpty(replayEvidence, "status")),
+            Redact(GetOrEmpty(replayEvidence, "ok")));
+    }
+
+    /// <summary>
     /// Returns the value unchanged for ordinary claim values, but replaces any raw-token-shaped string
     /// (a three-part base64url JWT) with a placeholder. This is the last line of defence ensuring no raw
     /// access token is ever emitted to logs.

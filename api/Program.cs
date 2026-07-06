@@ -1,5 +1,9 @@
+using System.Reflection;
+using Croesus.Api.Controllers;
 using Croesus.Api.Telemetry;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc.ApplicationParts;
+using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.Identity.Web;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -38,13 +42,28 @@ builder.Services.AddCors(options =>
     options.AddPolicy(spaCorsPolicy, policy => policy
         .WithOrigins(corsAllowedOrigins)
         .AllowAnyHeader()
-        .WithMethods("GET"));
+        // POST is required by the gated Tier 2 replay endpoint; GET serves /api/me.
+        .WithMethods("GET", "POST"));
 });
 
 // Evidence layer: structured, claims-only logging of both OBO legs to Application Insights.
 builder.Services.AddScoped<OboClaimLogger>();
 
-builder.Services.AddControllers();
+// Server-side HttpClient used by the gated Tier 2 replay endpoint to re-present a forwarded token.
+builder.Services.AddHttpClient();
+
+// Reversible Tier 2 gate: the deliberate token-replay endpoint is only MAPPED when Demo:EnableReplay is
+// true. When false (the default), an application feature provider removes ReplayController from the MVC
+// model so its route is absent entirely (POST /api/replay -> 404), rather than present-but-refusing.
+// The flag is evaluated lazily (when the controller feature is populated, after configuration is fully
+// merged) so the value reflects the final configuration, including test-host overrides.
+var configuration = builder.Configuration;
+builder.Services
+    .AddControllers()
+    .ConfigureApplicationPartManager(manager => manager.FeatureProviders.Add(
+        new ExcludeControllerFeatureProvider(
+            typeof(ReplayController),
+            () => !configuration.GetValue<bool>("Demo:EnableReplay"))));
 
 var app = builder.Build();
 
@@ -58,3 +77,38 @@ app.Run();
 
 // Exposed so the negative-control test project (WebApplicationFactory<Program>) can host the API.
 public partial class Program { }
+
+/// <summary>
+/// Removes a single controller from the discovered MVC model when a lazily-evaluated predicate returns
+/// true. Used to make the reversible Tier 2 replay endpoint absent (route unmapped) when
+/// <c>Demo:EnableReplay</c> is false, so it returns 404 rather than existing and refusing. The predicate is
+/// evaluated at feature-population time (after configuration is fully merged), so it reflects the final
+/// configuration value.
+/// </summary>
+internal sealed class ExcludeControllerFeatureProvider : IApplicationFeatureProvider<ControllerFeature>
+{
+    private readonly TypeInfo _excluded;
+    private readonly Func<bool> _shouldExclude;
+
+    public ExcludeControllerFeatureProvider(Type excluded, Func<bool> shouldExclude)
+    {
+        _excluded = excluded.GetTypeInfo();
+        _shouldExclude = shouldExclude;
+    }
+
+    public void PopulateFeature(IEnumerable<ApplicationPart> parts, ControllerFeature feature)
+    {
+        if (!_shouldExclude())
+        {
+            return;
+        }
+
+        for (var i = feature.Controllers.Count - 1; i >= 0; i--)
+        {
+            if (feature.Controllers[i] == _excluded)
+            {
+                feature.Controllers.RemoveAt(i);
+            }
+        }
+    }
+}

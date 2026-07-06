@@ -90,6 +90,13 @@ add_fic() {
 
 add_fic "github-${ENVIRONMENT_NAME}"   "repo:${REPO}:environment:${ENVIRONMENT_NAME}"
 add_fic "github-branch-${DEFAULT_BRANCH}" "repo:${REPO}:ref:refs/heads/${DEFAULT_BRANCH}"
+# The Tier 2 replay lab runs under a SEPARATE, manually-approved `replay-lab`
+# GitHub environment (see .github/workflows/deploy-croesus.yml). Its OIDC token
+# subject is `repo:<owner>/<repo>:environment:replay-lab`, so add a matching
+# credential. The subject MUST end with `:environment:replay-lab`:
+# teardown-app-registrations.sh and verify-clean.sh find/remove it by that
+# subject suffix (name-agnostic), not by the credential name.
+add_fic "github-replay-lab"            "repo:${REPO}:environment:replay-lab"
 
 # -----------------------------------------------------------------------------
 # 3) RBAC: Contributor at the resource-group scope so the workflow can deploy
@@ -137,10 +144,16 @@ Deploy identity ready.
   Federated subjects:
     repo:${REPO}:environment:${ENVIRONMENT_NAME}
     repo:${REPO}:ref:refs/heads/${DEFAULT_BRANCH}
+    repo:${REPO}:environment:replay-lab   (Tier 2 replay lab; off by default)
 
 Next:
   1. Create the GitHub 'production' environment (Settings > Environments) so the
-     environment-scoped federated credential is presented.
+     environment-scoped federated credential is presented. To use the Tier 2
+     replay lab, also create a manually-approved 'replay-lab' environment and
+     set the repo variable ENABLE_REPLAY_LAB=true; leave both unset to keep it
+     off. The 'replay-lab' federated credential above is durable lab infra —
+     teardown-app-registrations.sh removes it by its ':environment:replay-lab'
+     subject suffix when you tear the demo down.
   2. Run provision-app-registrations.sh, then set SPA_CLIENT_ID, API_CLIENT_ID,
      API_SCOPE per docs/configuration-contract.md.
   3. Deploy infra/main.bicep, then set API_BASE_URL, KEY_VAULT_NAME,

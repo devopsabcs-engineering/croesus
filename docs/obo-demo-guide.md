@@ -151,12 +151,101 @@ The Application Insights claims are the primary evidence. The Entra non-interact
 ```kusto
 AADNonInteractiveUserSignInLogs
 | where TimeGenerated > ago(1h)
-| where AppDisplayName == "Croesus API" or ResourceDisplayName == "Microsoft Graph"
+| where AppDisplayName == "Croesus GPD Central API (mock)" or ResourceDisplayName == "Microsoft Graph"
 | project TimeGenerated, CorrelationId, AppDisplayName, ResourceDisplayName, UserPrincipalName, Status
 | sort by TimeGenerated asc
 ```
 
 You see two correlated rows that share a `CorrelationId`: the SPA-to-API leg and the API-to-Graph leg. The two resources differ, which mirrors the two distinct audiences you saw in the claim logs.
+
+## Step 7: Reproduce the replay shape and Token Protection 1008 (Tier 2)
+
+Tier 1 proved audience binding from the browser alone. Tier 2 goes further: it reproduces the customer's server-side replay shape (Tier 2a) and, on a supported resource, the real Token Protection "unbound" 1008 sign-in-log signal (Tier 2b). Every Tier 2 change is gated off by default and fully reversible, so run it in a lab tenant and tear it down when you finish.
+
+### Step 7a: Confirm the SPA Graph consent
+
+The Tier 2a replay needs a real Microsoft Graph token in the browser, so the SPA must hold the Microsoft Graph `User.Read` delegated grant. The provisioning script from Step 1 already adds and admin-consents it and records the grant id for teardown. Re-run the script if you provisioned before Tier 2 landed; it is idempotent and reuses the existing registrations.
+
+```bash
+./scripts/provision-app-registrations.sh
+```
+
+> [!NOTE]
+> This SPA-side Graph grant is the one intentional exception to the "the SPA requests only the API scope" rule. It exists solely so the replay demo has a genuine Graph token to forward, and the teardown revokes it.
+
+### Step 7b: Provision the report-only Token Protection policy (Tier 2b)
+
+The 1008 signal comes from a Conditional Access Token Protection policy, not from any HTTP response. Create it in report-only mode so it records the binding evaluation without blocking anyone. The policy targets a single test user, excludes a break-glass account, applies only to native mobile and desktop clients, and points at a supported resource (Exchange Online by default).
+
+```bash
+TEST_USER_OBJECT_ID="<test-user-object-id>" \
+BREAK_GLASS_USER_OBJECT_ID="<break-glass-object-id>" \
+  ./scripts/provision-ca-policy.sh
+```
+
+> [!IMPORTANT]
+> Token Protection is a Microsoft Entra ID P1 capability, and it evaluates only for native applications reaching Exchange Online, SharePoint Online, or Teams. It does not evaluate the browser SPA to custom API to Graph flow, so the 1008 line appears only for this supported-resource exhibit, never for the Croesus OBO path itself.
+
+### Step 7c: Enable the replay gates
+
+The server-side replay endpoint and the SPA replay control are both off by default. Turn them on only for the lab run: set the API gate `Demo:EnableReplay` to `true` and build the SPA with `VITE_ENABLE_REPLAY_DEMO=true`.
+
+On the deployed Web App, set the live application setting, because a code-only deploy does not reapply the Bicep default:
+
+```bash
+az webapp config appsettings set \
+  --name "$API_APP_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --settings Demo__EnableReplay=true
+```
+
+Alternatively, run the deploy workflow's manually approved `replay-lab` job. It provisions the policy, sets the live gate, and runs the Tier 2 evidence in one gated pass, and it never runs on the default path.
+
+### Step 7d: Exercise the server-side replay
+
+Open the SPA and sign in. With the gate on, a Tier 2a control appears alongside the Tier 1 negative control. It acquires a real Graph token in the browser and POSTs it to `POST /api/replay`. The API replays that same token to Microsoft Graph from server-side context, records the claims-only evidence, and returns the outcome. This reproduces the shape the sign-in logs attribute to the vendor backend: one token acquired in one place, presented from another, with no fresh issuance.
+
+### Step 7e: Read the ReplayAttempt and 1008 evidence
+
+The API emits a distinct App Insights custom event named `ReplayAttempt` for each server-side replay, separate from the good-path `OboExchange` event, so replay evidence never mixes with the OBO evidence. Query it in Application Insights:
+
+```kusto
+customEvents
+| where name == "ReplayAttempt"
+| order by timestamp desc
+```
+
+For the report-only Token Protection signal, run Query 4 from [../scripts/evidence-kql.kusto](../scripts/evidence-kql.kusto) against the workspace that receives the sign-in logs:
+
+```kusto
+AADNonInteractiveUserSignInLogs
+| where TimeGenerated > ago(7d)
+| where TokenProtectionStatusDetails != ""
+| extend parsed = parse_json(TokenProtectionStatusDetails)
+| extend bindingStatusCode = tostring(parsed["signInSessionStatusCode"])
+| where bindingStatusCode == "1008"
+| project TimeGenerated, UserPrincipalName, AppDisplayName, ResourceDisplayName, IPAddress, bindingStatusCode
+| sort by TimeGenerated desc
+```
+
+Query 5 in the same file joins the interactive SPA sign-in to the non-interactive second leg, so you can read both legs of one session together.
+
+## Step 8: Tear down and verify clean
+
+Tier 2 is designed to leave no trace. Reverse it in this order, then assert the tenant is clean:
+
+```bash
+./scripts/teardown-ca-policy.sh
+KEY_VAULT_NAME="$KEY_VAULT_NAME" \
+API_APP_NAME="$API_APP_NAME" RESOURCE_GROUP="$RESOURCE_GROUP" \
+  ./scripts/teardown-app-registrations.sh
+./scripts/verify-clean.sh
+```
+
+[../scripts/teardown-ca-policy.sh](../scripts/teardown-ca-policy.sh) deletes the report-only policy by its recorded id, with a demo-prefix sweep as a fallback. The extended [../scripts/teardown-app-registrations.sh](../scripts/teardown-app-registrations.sh) also revokes the SPA-to-Graph delegated grant, resets the live `Demo__EnableReplay` setting to false, and removes the `replay-lab` federated credential from the deploy identity. [../scripts/verify-clean.sh](../scripts/verify-clean.sh) is read-only and exits non-zero if any residue remains, so it gates a "the tenant is clean" claim.
+
+> [!NOTE]
+> The `replay-lab` GitHub environment is a repository-side object with no secrets and no tenant effect, so the teardown scripts leave it in place as durable lab infrastructure. If you want the repository returned to its exact prior state, remove it manually under Settings, then Environments.
 
 ## Tenancy: single-tenant demo, multi-tenant in production
 

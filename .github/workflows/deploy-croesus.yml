@@ -187,3 +187,112 @@ jobs:
           name: obo-evidence
           path: ${{ env.EVIDENCE_FILE }}
           if-no-files-found: ignore
+
+  replay-lab:
+    name: Tier 2 replay lab (manual, gated)
+    needs: [deploy]
+    runs-on: ubuntu-latest
+    # OFF by default and never runs unattended. Two independent gates, mirroring
+    # the evidence job's `environment: production` + `vars.ENABLE_ROPC_EVIDENCE`:
+    #   1. `if: vars.ENABLE_REPLAY_LAB == 'true'` (opt-in repo variable), and
+    #   2. `environment: replay-lab` (a distinct, manually-approved environment).
+    # This job NEVER runs teardown: teardown is operator-run
+    # (scripts/teardown-ca-policy.sh + scripts/teardown-app-registrations.sh,
+    # which also resets Demo__EnableReplay=false); see docs/obo-demo-guide.md.
+    if: vars.ENABLE_REPLAY_LAB == 'true'
+    environment: replay-lab # manual approval gate, distinct from production
+    env:
+      # Non-secret public identifiers (object ids) the CA-policy script requires.
+      TEST_USER_OBJECT_ID: ${{ vars.TEST_USER_OBJECT_ID }}
+      BREAK_GLASS_USER_OBJECT_ID: ${{ vars.BREAK_GLASS_USER_OBJECT_ID }}
+      WORKSPACE_ID: ${{ vars.LOG_ANALYTICS_WORKSPACE_ID }}
+      EVIDENCE_FILE: tier2-replay-evidence.md
+    steps:
+      - uses: actions/checkout@v4
+      - name: Azure login (OIDC, no stored secret)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Provision report-only Token Protection CA policy
+        run: |
+          chmod +x scripts/*.sh
+          bash scripts/provision-ca-policy.sh
+      - name: Enable the server-side replay gate (live app setting)
+        run: |
+          # A code-only deploy does NOT apply Bicep appSettings, so set the gate
+          # live. Operator teardown flips it back to false.
+          az webapp config appsettings set \
+            --name "${{ vars.API_APP_NAME }}" \
+            --resource-group "${{ vars.RESOURCE_GROUP }}" \
+            --settings Demo__EnableReplay=true >/dev/null
+          echo "> Live gate \`Demo__EnableReplay=true\` set on \`${{ vars.API_APP_NAME }}\` (reset to \`false\` via operator teardown)." >> "$GITHUB_STEP_SUMMARY"
+      - name: Tier 2 replay evidence (Token Protection 1008 + two-leg correlation)
+        run: |
+          set -euo pipefail
+          unbound_query='AADNonInteractiveUserSignInLogs
+          | where TimeGenerated > ago(7d)
+          | where TokenProtectionStatusDetails != ""
+          | extend parsed = parse_json(TokenProtectionStatusDetails)
+          | extend bindingStatus     = tostring(parsed["signInSessionStatus"])
+          | extend bindingStatusCode = tostring(parsed["signInSessionStatusCode"])
+          | where bindingStatusCode == "1008"
+          | project TimeGenerated, UserPrincipalName, AppDisplayName, ResourceDisplayName,
+                    IPAddress, bindingStatus, bindingStatusCode, CorrelationId, Id
+          | sort by TimeGenerated desc'
+          correlation_query='let interactive =
+              SigninLogs
+              | where TimeGenerated > ago(1d)
+              | where AppDisplayName == "Croesus GPD Central SPA (mock)"
+              | project L1_Time=TimeGenerated, CorrelationId, UserPrincipalName,
+                        L1_IP=IPAddress, L1_Resource=ResourceDisplayName;
+          let secondLeg =
+              AADNonInteractiveUserSignInLogs
+              | where TimeGenerated > ago(1d)
+              | extend tp = parse_json(TokenProtectionStatusDetails)
+              | project L2_Time=TimeGenerated, CorrelationId, UserPrincipalName,
+                        L2_IP=IPAddress, L2_Resource=ResourceDisplayName, L2_App=AppDisplayName,
+                        L2_Bind=tostring(tp["signInSessionStatus"]),
+                        L2_Code=tostring(tp["signInSessionStatusCode"]);
+          interactive
+          | join kind=inner secondLeg on CorrelationId, UserPrincipalName
+          | project UserPrincipalName, CorrelationId, L1_Time, L1_IP, L1_Resource,
+                    L2_Time, L2_IP, L2_App, L2_Resource, L2_Bind, L2_Code
+          | sort by L1_Time desc'
+          {
+            echo "### Tier 2b Token Protection unbound / 1008 evidence"
+            echo ""
+          } | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
+          if az monitor log-analytics query \
+              --workspace "$WORKSPACE_ID" \
+              --analytics-query "$unbound_query" \
+              --output table | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null; then
+            printf '\n' | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
+          else
+            echo "_No 1008 rows yet: Token Protection 1008 populates only for a native-app client reaching Exchange Online / SharePoint Online / Teams under the report-only policy, and sign-in logs can lag a few minutes._" \
+              | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
+          fi
+          {
+            echo ""
+            echo "### Tier 2a two-leg correlation (interactive SPA <-> non-interactive OBO leg)"
+            echo ""
+          } | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
+          if az monitor log-analytics query \
+              --workspace "$WORKSPACE_ID" \
+              --analytics-query "$correlation_query" \
+              --output table | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null; then
+            printf '\n' | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
+          else
+            echo "_Correlation returned no rows yet (sign-in logs can lag; widen the window in scripts/evidence-kql.kusto if needed)._" \
+              | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
+          fi
+          echo "> Primary Tier 2a evidence is the API App Insights \`ReplayAttempt\` custom event; full query set: \`scripts/evidence-kql.kusto\`." \
+            | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
+      - name: Upload Tier 2 replay evidence artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier2-replay-evidence
+          path: ${{ env.EVIDENCE_FILE }}
+          if-no-files-found: ignore

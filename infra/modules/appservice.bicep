@@ -142,6 +142,12 @@ resource apiApp 'Microsoft.Web/sites@2024-04-01' = {
           name: 'Cors__AllowedOrigins__0'
           value: 'https://${spaApp.properties.defaultHostName}'
         }
+        {
+          // Gates the Tier 2 replay demo endpoint (POST /api/replay). Defaults to
+          // 'false' so the endpoint stays disabled unless explicitly opted in.
+          name: 'Demo__EnableReplay'
+          value: 'false'
+        }
       ]
     }
   }
