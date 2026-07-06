@@ -28,6 +28,15 @@ param appInsightsConnectionString string
 @description('Name of the secret that stores the Application Insights connection string.')
 param appInsightsConnectionStringSecretName string = 'appinsights-connection-string'
 
+@description('Resource ID of the subnet (snet-pe) that hosts the Key Vault private endpoint.')
+param peSubnetId string
+
+@description('Resource ID of the privatelink.vaultcore.azure.net private DNS zone bound to the private endpoint.')
+param keyVaultPrivateDnsZoneId string
+
+@description('Name of the Key Vault private endpoint.')
+param keyVaultPrivateEndpointName string = 'croesus-kv-pe'
+
 // Built-in role: Key Vault Secrets User.
 var keyVaultSecretsUserRoleId = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
@@ -46,7 +55,51 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     enableRbacAuthorization: true
     enableSoftDelete: true
     softDeleteRetentionInDays: 90
-    publicNetworkAccess: 'Enabled'
+    // Public access is disabled; the vault is reachable only through the
+    // private endpoint in snet-pe. The API Web App resolves the vault FQDN to
+    // the private endpoint via the linked privatelink.vaultcore.azure.net zone.
+    publicNetworkAccess: 'Disabled'
+  }
+}
+
+// Private endpoint into snet-pe targeting the vault. Co-located with the vault
+// so the PE naturally depends on the vault existing; the subnet and DNS zone
+// arrive by resource ID from the networking module.
+resource keyVaultPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' = {
+  name: keyVaultPrivateEndpointName
+  location: location
+  properties: {
+    subnet: {
+      id: peSubnetId
+    }
+    privateLinkServiceConnections: [
+      {
+        name: keyVaultPrivateEndpointName
+        properties: {
+          privateLinkServiceId: keyVault.id
+          groupIds: [
+            'vault'
+          ]
+        }
+      }
+    ]
+  }
+}
+
+// Binds the private endpoint's A-record into the Key Vault private DNS zone so
+// the vault FQDN resolves to the private endpoint address inside the VNet.
+resource keyVaultPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-11-01' = {
+  parent: keyVaultPrivateEndpoint
+  name: 'default'
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'privatelink-vaultcore-azure-net'
+        properties: {
+          privateDnsZoneId: keyVaultPrivateDnsZoneId
+        }
+      }
+    ]
   }
 }
 

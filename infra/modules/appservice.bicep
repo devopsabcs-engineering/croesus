@@ -43,6 +43,9 @@ param certSecretName string = 'croesus-api-cert'
 @description('Key Vault secret name holding the Application Insights connection string.')
 param appInsightsConnectionStringSecretName string = 'appinsights-connection-string'
 
+@description('Resource ID of the App Service integration subnet (snet-app) delegated to Microsoft.Web/serverFarms. Only the API site is integrated.')
+param appSubnetId string
+
 // Build Key Vault secret URIs from the vault NAME only (a non-secret param),
 // so this module does not need a hard dependency on the Key Vault resource and
 // no secret value is ever embedded.
@@ -100,8 +103,14 @@ resource apiApp 'Microsoft.Web/sites@2024-04-01' = {
   properties: {
     serverFarmId: appServicePlan.id
     httpsOnly: true
+    // Regional VNet integration: outbound traffic (including Key Vault
+    // reference resolution) egresses through snet-app so it can reach the
+    // Key Vault private endpoint. vnetRouteAllEnabled forces all outbound
+    // traffic and DNS through the VNet.
+    virtualNetworkSubnetId: appSubnetId
     siteConfig: {
       linuxFxVersion: 'DOTNETCORE|8.0'
+      vnetRouteAllEnabled: true
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
       appSettings: [

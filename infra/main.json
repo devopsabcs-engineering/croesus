@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "13953874713249995827"
+      "templateHash": "17534537513425469743"
     }
   },
   "parameters": {
@@ -102,9 +102,224 @@
       "metadata": {
         "description": "Key Vault secret name for the Application Insights connection string."
       }
+    },
+    "vnetName": {
+      "type": "string",
+      "defaultValue": "croesus-vnet",
+      "metadata": {
+        "description": "Name of the virtual network."
+      }
+    },
+    "peSubnetName": {
+      "type": "string",
+      "defaultValue": "snet-pe",
+      "metadata": {
+        "description": "Name of the private endpoint subnet."
+      }
+    },
+    "appSubnetName": {
+      "type": "string",
+      "defaultValue": "snet-app",
+      "metadata": {
+        "description": "Name of the App Service integration subnet."
+      }
+    },
+    "keyVaultPrivateEndpointName": {
+      "type": "string",
+      "defaultValue": "croesus-kv-pe",
+      "metadata": {
+        "description": "Name of the Key Vault private endpoint."
+      }
     }
   },
   "resources": [
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "networking",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "vnetName": {
+            "value": "[parameters('vnetName')]"
+          },
+          "peSubnetName": {
+            "value": "[parameters('peSubnetName')]"
+          },
+          "appSubnetName": {
+            "value": "[parameters('appSubnetName')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.44.1.10279",
+              "templateHash": "9354400126859724609"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for the virtual network and private DNS zone link."
+              }
+            },
+            "vnetName": {
+              "type": "string",
+              "defaultValue": "croesus-vnet",
+              "metadata": {
+                "description": "Name of the virtual network."
+              }
+            },
+            "vnetAddressPrefix": {
+              "type": "string",
+              "defaultValue": "10.10.0.0/16",
+              "metadata": {
+                "description": "Address space for the virtual network."
+              }
+            },
+            "peSubnetName": {
+              "type": "string",
+              "defaultValue": "snet-pe",
+              "metadata": {
+                "description": "Name of the subnet that hosts private endpoints."
+              }
+            },
+            "peSubnetPrefix": {
+              "type": "string",
+              "defaultValue": "10.10.1.0/24",
+              "metadata": {
+                "description": "Address prefix for the private endpoint subnet."
+              }
+            },
+            "appSubnetName": {
+              "type": "string",
+              "defaultValue": "snet-app",
+              "metadata": {
+                "description": "Name of the subnet delegated to App Service regional VNet integration."
+              }
+            },
+            "appSubnetPrefix": {
+              "type": "string",
+              "defaultValue": "10.10.2.0/24",
+              "metadata": {
+                "description": "Address prefix for the App Service integration subnet."
+              }
+            },
+            "keyVaultPrivateDnsZoneName": {
+              "type": "string",
+              "defaultValue": "privatelink.vaultcore.azure.net",
+              "metadata": {
+                "description": "Name of the private DNS zone for Key Vault private link."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/virtualNetworks",
+              "apiVersion": "2023-11-01",
+              "name": "[parameters('vnetName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "addressSpace": {
+                  "addressPrefixes": [
+                    "[parameters('vnetAddressPrefix')]"
+                  ]
+                },
+                "subnets": [
+                  {
+                    "name": "[parameters('peSubnetName')]",
+                    "properties": {
+                      "addressPrefixes": [
+                        "[parameters('peSubnetPrefix')]"
+                      ],
+                      "privateEndpointNetworkPolicies": "Disabled"
+                    }
+                  },
+                  {
+                    "name": "[parameters('appSubnetName')]",
+                    "properties": {
+                      "addressPrefixes": [
+                        "[parameters('appSubnetPrefix')]"
+                      ],
+                      "delegations": [
+                        {
+                          "name": "appservice-delegation",
+                          "properties": {
+                            "serviceName": "Microsoft.Web/serverFarms"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2020-06-01",
+              "name": "[parameters('keyVaultPrivateDnsZoneName')]",
+              "location": "global"
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2020-06-01",
+              "name": "[format('{0}/{1}', parameters('keyVaultPrivateDnsZoneName'), format('{0}-link', parameters('vnetName')))]",
+              "location": "global",
+              "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                  "id": "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', parameters('keyVaultPrivateDnsZoneName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "appSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the App Service integration subnet (snet-app)."
+              },
+              "value": "[format('{0}/subnets/{1}', resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName')), parameters('appSubnetName'))]"
+            },
+            "peSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the private endpoint subnet (snet-pe)."
+              },
+              "value": "[format('{0}/subnets/{1}', resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName')), parameters('peSubnetName'))]"
+            },
+            "keyVaultPrivateDnsZoneId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the Key Vault private DNS zone."
+              },
+              "value": "[resourceId('Microsoft.Network/privateDnsZones', parameters('keyVaultPrivateDnsZoneName'))]"
+            },
+            "vnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the virtual network."
+              },
+              "value": "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+            }
+          }
+        }
+      }
+    },
     {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
@@ -293,6 +508,9 @@
           },
           "appInsightsConnectionStringSecretName": {
             "value": "[parameters('appInsightsConnectionStringSecretName')]"
+          },
+          "appSubnetId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'networking'), '2025-04-01').outputs.appSubnetId.value]"
           }
         },
         "template": {
@@ -302,7 +520,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "16033790434213612329"
+              "templateHash": "16714565526441088316"
             }
           },
           "parameters": {
@@ -381,6 +599,12 @@
               "metadata": {
                 "description": "Key Vault secret name holding the Application Insights connection string."
               }
+            },
+            "appSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the App Service integration subnet (snet-app) delegated to Microsoft.Web/serverFarms. Only the API site is integrated."
+              }
             }
           },
           "variables": {
@@ -443,8 +667,10 @@
               "properties": {
                 "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('appServicePlanName'))]",
                 "httpsOnly": true,
+                "virtualNetworkSubnetId": "[parameters('appSubnetId')]",
                 "siteConfig": {
                   "linuxFxVersion": "DOTNETCORE|8.0",
+                  "vnetRouteAllEnabled": true,
                   "ftpsState": "Disabled",
                   "minTlsVersion": "1.2",
                   "appSettings": [
@@ -531,7 +757,10 @@
             }
           }
         }
-      }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'networking')]"
+      ]
     },
     {
       "type": "Microsoft.Resources/deployments",
@@ -560,6 +789,15 @@
           },
           "appInsightsConnectionStringSecretName": {
             "value": "[parameters('appInsightsConnectionStringSecretName')]"
+          },
+          "peSubnetId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'networking'), '2025-04-01').outputs.peSubnetId.value]"
+          },
+          "keyVaultPrivateDnsZoneId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'networking'), '2025-04-01').outputs.keyVaultPrivateDnsZoneId.value]"
+          },
+          "keyVaultPrivateEndpointName": {
+            "value": "[parameters('keyVaultPrivateEndpointName')]"
           }
         },
         "template": {
@@ -569,7 +807,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "6001086187661636596"
+              "templateHash": "265322481388146934"
             }
           },
           "parameters": {
@@ -609,6 +847,25 @@
               "metadata": {
                 "description": "Name of the secret that stores the Application Insights connection string."
               }
+            },
+            "peSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the subnet (snet-pe) that hosts the Key Vault private endpoint."
+              }
+            },
+            "keyVaultPrivateDnsZoneId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the privatelink.vaultcore.azure.net private DNS zone bound to the private endpoint."
+              }
+            },
+            "keyVaultPrivateEndpointName": {
+              "type": "string",
+              "defaultValue": "croesus-kv-pe",
+              "metadata": {
+                "description": "Name of the Key Vault private endpoint."
+              }
             }
           },
           "variables": {
@@ -629,8 +886,51 @@
                 "enableRbacAuthorization": true,
                 "enableSoftDelete": true,
                 "softDeleteRetentionInDays": 90,
-                "publicNetworkAccess": "Enabled"
+                "publicNetworkAccess": "Disabled"
               }
+            },
+            {
+              "type": "Microsoft.Network/privateEndpoints",
+              "apiVersion": "2023-11-01",
+              "name": "[parameters('keyVaultPrivateEndpointName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "subnet": {
+                  "id": "[parameters('peSubnetId')]"
+                },
+                "privateLinkServiceConnections": [
+                  {
+                    "name": "[parameters('keyVaultPrivateEndpointName')]",
+                    "properties": {
+                      "privateLinkServiceId": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
+                      "groupIds": [
+                        "vault"
+                      ]
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+              "apiVersion": "2023-11-01",
+              "name": "[format('{0}/{1}', parameters('keyVaultPrivateEndpointName'), 'default')]",
+              "properties": {
+                "privateDnsZoneConfigs": [
+                  {
+                    "name": "privatelink-vaultcore-azure-net",
+                    "properties": {
+                      "privateDnsZoneId": "[parameters('keyVaultPrivateDnsZoneId')]"
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateEndpoints', parameters('keyVaultPrivateEndpointName'))]"
+              ]
             },
             {
               "type": "Microsoft.Authorization/roleAssignments",
@@ -685,7 +985,8 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.Resources/deployments', 'appservice')]",
-        "[resourceId('Microsoft.Resources/deployments', 'monitoring')]"
+        "[resourceId('Microsoft.Resources/deployments', 'monitoring')]",
+        "[resourceId('Microsoft.Resources/deployments', 'networking')]"
       ]
     }
   ],
@@ -731,6 +1032,27 @@
         "description": "Key Vault reference URI for the Application Insights connection string (no literal value emitted)."
       },
       "value": "[reference(resourceId('Microsoft.Resources/deployments', 'keyvault'), '2025-04-01').outputs.appInsightsConnectionStringSecretUri.value]"
+    },
+    "vnetId": {
+      "type": "string",
+      "metadata": {
+        "description": "Resource ID of the virtual network."
+      },
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'networking'), '2025-04-01').outputs.vnetId.value]"
+    },
+    "appSubnetId": {
+      "type": "string",
+      "metadata": {
+        "description": "Resource ID of the App Service integration subnet."
+      },
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'networking'), '2025-04-01').outputs.appSubnetId.value]"
+    },
+    "peSubnetId": {
+      "type": "string",
+      "metadata": {
+        "description": "Resource ID of the private endpoint subnet."
+      },
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'networking'), '2025-04-01').outputs.peSubnetId.value]"
     }
   }
 }

@@ -52,6 +52,28 @@ param certSecretName string = 'croesus-api-cert'
 @description('Key Vault secret name for the Application Insights connection string.')
 param appInsightsConnectionStringSecretName string = 'appinsights-connection-string'
 
+@description('Name of the virtual network.')
+param vnetName string = 'croesus-vnet'
+
+@description('Name of the private endpoint subnet.')
+param peSubnetName string = 'snet-pe'
+
+@description('Name of the App Service integration subnet.')
+param appSubnetName string = 'snet-app'
+
+@description('Name of the Key Vault private endpoint.')
+param keyVaultPrivateEndpointName string = 'croesus-kv-pe'
+
+module networking 'modules/networking.bicep' = {
+  name: 'networking'
+  params: {
+    location: location
+    vnetName: vnetName
+    peSubnetName: peSubnetName
+    appSubnetName: appSubnetName
+  }
+}
+
 module monitoring 'modules/monitoring.bicep' = {
   name: 'monitoring'
   params: {
@@ -76,6 +98,7 @@ module appService 'modules/appservice.bicep' = {
     keyVaultName: keyVaultName
     certSecretName: certSecretName
     appInsightsConnectionStringSecretName: appInsightsConnectionStringSecretName
+    appSubnetId: networking.outputs.appSubnetId
   }
 }
 
@@ -88,6 +111,9 @@ module keyVault 'modules/keyvault.bicep' = {
     apiPrincipalId: appService.outputs.apiPrincipalId
     appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
     appInsightsConnectionStringSecretName: appInsightsConnectionStringSecretName
+    peSubnetId: networking.outputs.peSubnetId
+    keyVaultPrivateDnsZoneId: networking.outputs.keyVaultPrivateDnsZoneId
+    keyVaultPrivateEndpointName: keyVaultPrivateEndpointName
   }
 }
 
@@ -108,3 +134,12 @@ output keyVaultUri string = keyVault.outputs.keyVaultUri
 
 @description('Key Vault reference URI for the Application Insights connection string (no literal value emitted).')
 output appInsightsConnectionStringSecretUri string = keyVault.outputs.appInsightsConnectionStringSecretUri
+
+@description('Resource ID of the virtual network.')
+output vnetId string = networking.outputs.vnetId
+
+@description('Resource ID of the App Service integration subnet.')
+output appSubnetId string = networking.outputs.appSubnetId
+
+@description('Resource ID of the private endpoint subnet.')
+output peSubnetId string = networking.outputs.peSubnetId
