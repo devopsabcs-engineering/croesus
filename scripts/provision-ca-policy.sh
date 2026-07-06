@@ -72,6 +72,7 @@ POLICY_BODY="$(cat <<JSON
   "state": "enabledForReportingButNotEnforced",
   "conditions": {
     "clientAppTypes": ["mobileAppsAndDesktopClients"],
+    "platforms": { "includePlatforms": ["windows", "macOS", "iOS"] },
     "applications": { "includeApplications": ["$RESOURCE_APP_ID"] },
     "users": {
       "includeUsers": ["$TEST_USER_OBJECT_ID"],
@@ -92,6 +93,7 @@ JSON
 EXISTING_ID="$(az rest --method GET \
   --uri "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies?\$select=id,displayName" \
   --query "value[?displayName=='$POLICY_DISPLAY_NAME'] | [0].id" -o tsv 2>/dev/null || true)"
+EXISTING_ID="${EXISTING_ID%$'\r'}"
 
 if [[ -n "$EXISTING_ID" && "$EXISTING_ID" != "None" ]]; then
   log "Reusing existing CA policy '$POLICY_DISPLAY_NAME' ($EXISTING_ID) — patching in place"
@@ -107,6 +109,7 @@ else
     --headers "Content-Type=application/json" \
     --body "$POLICY_BODY" \
     --query id -o tsv)"
+  CA_POLICY_ID="${CA_POLICY_ID%$'\r'}"
 fi
 
 # -----------------------------------------------------------------------------
