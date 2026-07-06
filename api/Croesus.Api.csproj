@@ -20,6 +20,9 @@
     <PackageReference Include="Microsoft.Identity.Web" Version="4.11.0" />
     <PackageReference Include="Microsoft.Identity.Web.MicrosoftGraph" Version="4.11.0" />
     <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" Version="2.22.0" />
+    <!-- Swagger / OpenAPI (Swashbuckle) exposes an interactive UI at /swagger and the
+         OpenAPI document at /swagger/v1/swagger.json so the API surface is visible. -->
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>
 
 </Project>

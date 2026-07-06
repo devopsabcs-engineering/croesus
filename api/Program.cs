@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.Identity.Web;
+using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -65,7 +66,70 @@ builder.Services
             typeof(ReplayController),
             () => !configuration.GetValue<bool>("Demo:EnableReplay"))));
 
+// Swagger / OpenAPI. Exposes the API surface interactively at /swagger and the OpenAPI
+// document at /swagger/v1/swagger.json. An OAuth2 authorization-code + PKCE scheme is wired
+// against the tenant so the "Authorize" button acquires a real API-audienced user token
+// (scope api://<api-client-id>/access_as_user), letting the OBO good path be exercised from
+// the UI. The Swagger UI client id (a public SPA-style client) comes from Swagger:ClientId.
+var aadInstance = (configuration["AzureAd:Instance"] ?? "https://login.microsoftonline.com/").TrimEnd('/');
+var aadTenantId = configuration["AzureAd:TenantId"] ?? "common";
+var apiAudience = configuration["AzureAd:Audience"] ?? $"api://{configuration["AzureAd:ClientId"]}";
+var apiScope = $"{apiAudience}/access_as_user";
+var authorizationUrl = $"{aadInstance}/{aadTenantId}/oauth2/v2.0/authorize";
+var tokenUrl = $"{aadInstance}/{aadTenantId}/oauth2/v2.0/token";
+
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Croesus Mock SaaS OBO API",
+        Version = "v1",
+        Description = "Mock Croesus middle-tier API demonstrating the correct On-Behalf-Of (OBO) " +
+            "flow (GET /api/me) versus the gated, deliberate token-replay anti-pattern " +
+            "(POST /api/replay, present only when Demo:EnableReplay is true). All endpoints " +
+            "require an API-audienced bearer token with the access_as_user scope."
+    });
+
+    var oauthScheme = new OpenApiSecurityScheme
+    {
+        Type = SecuritySchemeType.OAuth2,
+        Flows = new OpenApiOAuthFlows
+        {
+            AuthorizationCode = new OpenApiOAuthFlow
+            {
+                AuthorizationUrl = new Uri(authorizationUrl),
+                TokenUrl = new Uri(tokenUrl),
+                Scopes = new Dictionary<string, string>
+                {
+                    [apiScope] = "Access the Croesus API as the signed-in user"
+                }
+            }
+        }
+    };
+    options.AddSecurityDefinition("oauth2", oauthScheme);
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        [new OpenApiSecurityScheme
+        {
+            Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "oauth2" }
+        }] = new[] { apiScope }
+    });
+});
+
 var app = builder.Build();
+
+// Swagger UI + document are anonymous (not [Authorize]) so the API surface is always visible.
+// OAuthUsePkce + the public Swagger:ClientId make the Authorize button acquire a user token.
+app.UseSwagger();
+app.UseSwaggerUI(options =>
+{
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "Croesus Mock SaaS OBO API v1");
+    options.OAuthClientId(configuration["Swagger:ClientId"] ?? configuration["AzureAd:ClientId"]);
+    options.OAuthScopes(apiScope);
+    options.OAuthUsePkce();
+    options.OAuthScopeSeparator(" ");
+});
 
 app.UseCors(spaCorsPolicy);
 app.UseAuthentication();

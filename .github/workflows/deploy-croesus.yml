@@ -99,6 +99,25 @@ jobs:
         with:
           app-name: ${{ env.API_APP_NAME }}
           package: ./api-publish
+      - name: Publish API surface (Swagger / OpenAPI) to run summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://${API_APP_NAME}.azurewebsites.net"
+          SPA="https://${SPA_APP_NAME}.azurewebsites.net"
+          {
+            echo "## API surface (Swagger / OpenAPI)"
+            echo ""
+            echo "| Resource | URL |"
+            echo "| --- | --- |"
+            echo "| Swagger UI | ${API}/swagger |"
+            echo "| OpenAPI document | ${API}/swagger/v1/swagger.json |"
+            echo "| SPA (front end) | ${SPA} |"
+            echo ""
+            echo "Operations: \`GET /api/me\` (OBO good path) and, when \`Demo:EnableReplay\` is true, the gated \`POST /api/replay\` token-replay anti-pattern. All require an API-audienced bearer token with the \`access_as_user\` scope."
+            echo ""
+            echo "Full reference: <https://github.com/${GITHUB_REPOSITORY}/wiki/API-Reference>"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   evidence:
     name: Post-deploy OBO evidence

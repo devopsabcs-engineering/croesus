@@ -48,3 +48,10 @@ appsettings.*.Local.json
 *.swp
 .DS_Store
 Thumbs.db
+
+# Local demo runtime artifacts (not committed)
+artifact/
+.demo-state.json
+kvsettings.json
+spa-redirects.json
+grant.json
