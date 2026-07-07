@@ -207,6 +207,8 @@ Every Tier 2 change reverses cleanly:
 
 The `replay-lab` GitHub environment is a repository-side object with no secrets and no tenant effect, so the teardown scripts intentionally retain it as durable lab infrastructure. Remove it manually under Settings, then Environments if you want the repository returned to its exact prior state. The full end-to-end walk-through lives in [docs/obo-demo-guide.md](docs/obo-demo-guide.md).
 
+The current live demo objects (the replay gate, the Conditional Access policy id, and the SPA-to-Graph grant id) are captured with identifiers and portal screenshots on the wiki: [Live demo state](https://github.com/devopsabcs-engineering/croesus/wiki/Live-Demo-State). Capture or refresh that record before running any teardown.
+
 ## Entra ID licensing for the Tier 2 replay lab
 
 Two distinct capabilities carry different licensing requirements, and the earlier working assumption that Token Protection needs P2 was wrong.
