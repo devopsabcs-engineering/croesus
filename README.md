@@ -18,6 +18,52 @@ Analysis of the **Desjardins** "GPD Central" (Central GPD) integration with the 
 
 Positive posture confirmed: no credentials on any registration, scoped HTTPS redirects, single-tenant, service-principal lock enabled.
 
+## Reproduction confirmed (live evidence)
+
+We reproduced the customer's signal end to end in the demo tenant (`MngEnvMCAP675646.onmicrosoft.com`) and captured it directly from the Microsoft Entra sign-in logs.
+
+What we confirmed:
+
+- A browser sign-in by a guest user to the mock Croesus SPA, calling the mock Croesus API, was recorded with a Token Protection sign-in-session status of `Unbound (statusCode: 1008)`.
+- The same user and source IP also produced a `bound` sign-in (statusCode `0`), giving a clean bound-versus-unbound contrast that matches the customer's reported pattern.
+- A report-only Conditional Access Token Protection policy surfaced the evaluation without blocking anyone.
+
+The captured interactive sign-in (filtered on Token Protection StatusCode equals 1008):
+
+| Field | Value |
+| --- | --- |
+| User | Emmanuel Knafo (`emknafo@microsoft.com`, guest, B2B collaboration) |
+| Application | Croesus GPD Central SPA (mock) (`06ef7c0a-9df3-4bcd-8b6f-ee275ca0adc2`) |
+| Resource | Croesus GPD Central API (mock) (`bc6338a5-a02a-4ddf-b1f4-9a9234bed8a8`) |
+| Client app | Browser |
+| Token Protection - Sign In Session | `Unbound (statusCode: 1008)` |
+
+Full proof, including portal screenshots and the reproducing KQL, is published on the project wiki: [Token Protection 1008 evidence](https://github.com/devopsabcs-engineering/croesus/wiki/Token-Protection-1008-Evidence).
+
+Reproduce it with this query against the `croesus-law` Log Analytics workspace:
+
+```kusto
+SigninLogs
+| where TimeGenerated > ago(7d)
+| extend tp = parse_json(TokenProtectionStatusDetails)
+| where tostring(tp.signInSessionStatusCode) == "1008"
+| project TimeGenerated, UserPrincipalName, AppDisplayName, ResourceDisplayName, IPAddress
+```
+
+## How to fix it properly
+
+The `1008` unbound signal means the token presented on the second hop is not bound to the originating device or platform broker. The durable fix is to stop replaying the user's token, adopt a standards On-Behalf-Of exchange, and then let Conditional Access enforce token binding.
+
+Recommended sequence:
+
+1. Escalate to the vendor first (Option B). Ask Croesus for the authoritative flow definition and the AWS egress IP ranges, and confirm whether the second hop is intended to be On-Behalf-Of or a server-side call.
+2. Implement standards On-Behalf-Of on the middle tier. The API registration must carry a confidential-client credential (a certificate in Key Vault), expose an `access_as_user` scope, and pre-authorize the SPA. The middle tier then mints a fresh, audience-bound Graph token (new `aud`, `jti`, and `iat`) instead of replaying the user's token. The mock API in this repository demonstrates exactly this shape.
+3. Prefer Entra B2B "Trust compliant devices" to resolve the cross-tenant root cause, so device-compliance claims flow correctly across the tenant boundary rather than being stripped and re-presented.
+4. Enforce token binding with Conditional Access. Keep the Token Protection policy in report-only until the flow is corrected, then move it to enforce so any future unbound replay is blocked rather than merely flagged.
+5. Verify with the sign-in logs. After the fix, the second hop should record `bound` (statusCode `0`) instead of `Unbound (statusCode: 1008)`.
+
+The five pieces a compliant flow requires, all of which the replay lacks, are listed under [What a real OBO needs that the replay lacks](#what-a-real-obo-needs-that-the-replay-lacks).
+
 ## Deliverables
 
 | Document | Purpose |
@@ -137,7 +183,7 @@ The live demo ships in three clearly-labeled tiers so the wrong and right flows 
 - Tier 2a (gated): the SPA acquires a real Microsoft Graph token and forwards it to `POST /api/replay`; the API replays that same token to Graph from server-side context and emits a distinct `ReplayAttempt` Application Insights event. This reproduces the server-side replay shape the sign-in logs attribute to the Croesus AWS backend, with no fresh token issuance.
 - Tier 2b (gated): a report-only Conditional Access Token Protection policy scoped to a native client and a supported resource (Exchange Online) surfaces the real Token Protection `1008` "unbound" status in the non-interactive sign-in logs.
 
-Tier 2b produces the literal `1008` value that Tier 2a cannot. That value is a Conditional Access sign-in-log signal, not an HTTP response, and it evaluates only for native-app clients reaching Exchange Online, SharePoint Online, or Teams (see the licensing section). Tier 2a reproduces the replay mechanics; Tier 2b reproduces the telemetry.
+Tier 2b produces the literal `1008` value that Tier 2a cannot. That value is a Conditional Access sign-in-log signal, not an HTTP response. Enforcement (blocking) evaluates only for native-app clients reaching Exchange Online, SharePoint Online, or Teams (see the licensing section), but the sign-in-session status detail is recorded more broadly. In this tenant we captured `Unbound (statusCode: 1008)` on the browser sign-in to the mock Croesus API itself (see [Reproduction confirmed](#reproduction-confirmed-live-evidence)). Tier 2a reproduces the replay mechanics; Tier 2b reproduces the telemetry.
 
 ### What a real OBO needs that the replay lacks
 
@@ -181,4 +227,4 @@ These plans are delivered by the `Microsoft_365_E5_(no_Teams)` SKU (5 seats, 2 c
 Conclusion and caveat:
 
 - Licensing is present. Entra ID P1 is provisioned, so the report-only Token Protection policy and sign-in-log inspection are both available to the lab.
-- Feature coverage is scoped by design. "Require token protection for sign-in sessions" enforces only for native applications reaching Exchange Online, SharePoint Online, or Teams, not for browser or SPA calls to Microsoft Graph. Tier 2b therefore points its exhibit at a supported resource to surface the `1008` signal; the SPA-to-API-to-Graph OBO path never emits it, and that boundary is a documented platform limit rather than a demo gap.
+- Enforcement is scoped by design, but the diagnostic status is broader. The session control "Require token protection for sign-in sessions" blocks only native applications reaching Exchange Online, SharePoint Online, or Teams. The sign-in-session status detail (`bound` or `unbound`, with code `0` or `1008`) is nonetheless recorded on other sign-ins: in this tenant the browser sign-in to the mock Croesus API was recorded as `Unbound (statusCode: 1008)`, the exact signal the customer reported. Enforcement remains scoped to the documented resources, but the diagnostic 1008 status was reproduced on the browser-to-API flow and is captured in [Reproduction confirmed](#reproduction-confirmed-live-evidence).

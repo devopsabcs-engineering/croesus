@@ -92,6 +92,9 @@ Gaps and differences identified between research findings and the implementation
 
 ## Suggested Follow-On Work
 
+* DD-LIVE-01: provision-ca-policy.sh required a `conditions.platforms.includePlatforms` clause (windows/macOS/iOS) — Microsoft Graph rejects a Token Protection policy without it (error 1173). Fixed + committed (09c4231) during live provisioning; also stripped a trailing CR from the az tsv policy id.
+* WI-06: The croesus App Service plan (croesus-asp) is live on F1 (Free) while Bicep declares B1; both croesus-api and croesus-spa were QuotaExceeded (Free daily compute quota exhausted), so the deployed Tier 2 API build could not be exercised live (503 / "site failed to start"). Options: wait for the daily Free-tier reset, or scale croesus-asp to B1 (paid) — a cost decision, deferred. The Tier 2 API build was published + zip-deployed to croesus-api; it will start on the next quota window. Local run already proved the gate (404 off / 401 on). (medium)
+
 * WI-01: Enforcement (blocking) beat — flip the CA policy report-only→enabled against a native client hitting EXO/SPO/Teams to demonstrate the actual block, then revert. (medium)
   * Source: research Potential Next Research + Step 4.2 commented PATCH.
   * Dependency: WI-03 (confirm the customer's target resource) + a registered native/device test client.
