@@ -15,6 +15,7 @@ import {
 } from "./api";
 import { EvidencePanel } from "./components/EvidencePanel";
 import { ReplayAttemptPanel, ServerReplayPanel } from "./components/ReplayAttemptPanel";
+import { TokenInspectorPanel } from "./components/TokenInspectorPanel";
 
 // GATED Tier 2a demo. The server-side replay section renders only when this build
 // flag is exactly the string "true"; with the gate off, nothing Tier 2 is shown.
@@ -230,6 +231,10 @@ export default function App() {
 
       <AuthenticatedTemplate>
         {data && <EvidencePanel data={data} />}
+      </AuthenticatedTemplate>
+
+      <AuthenticatedTemplate>
+        <TokenInspectorPanel />
       </AuthenticatedTemplate>
 
       <ContrastPanel />
