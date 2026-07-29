@@ -47,6 +47,11 @@ Each row below names one value, where it is defined, and every component that re
 > [!NOTE]
 > The active scope-enforcement path is the `[RequiredScope("access_as_user")]` attribute on the API controllers ([../api/Controllers/MeController.cs](../api/Controllers/MeController.cs) and [../api/Controllers/ReplayController.cs](../api/Controllers/ReplayController.cs)), which rejects a token that lacks the `access_as_user` scope with `403`. The `AzureAd:Scopes` app setting in the table above is not read by the API code and is not the mechanism that enforces the scope; treat it as configuration metadata, not the control.
 
+<!-- -->
+
+> [!NOTE]
+> `API_CLIENT_ID`, `SPA_CLIENT_ID`, and `API_SCOPE` are produced by [../scripts/provision-app-registrations.sh](../scripts/provision-app-registrations.sh), which also **persists them as repository variables automatically** via the `gh` CLI when it is installed and authenticated (controlled by `PERSIST_REPO_VARIABLES`, default `auto`). When `gh` is unavailable the script prints the exact `gh variable set` commands to run. The evidence workflow tolerates a missing `API_CLIENT_ID` by filtering the Microsoft Graph leg only.
+
 ## Deploy identity values
 
 The deploy workflow authenticates to Azure with an OpenID Connect federated credential. No deploy secret is stored. These values are distinct from the API confidential-client credential and are never used by the running application.

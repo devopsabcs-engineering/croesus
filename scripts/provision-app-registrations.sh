@@ -33,6 +33,16 @@
 #   SIGN_IN_AUDIENCE     (default: AzureADMyOrg) single-tenant demo shape.
 #   STATE_FILE           (default: .demo-state.json) machine-readable record of
 #                        created object ids used by the reversible teardown.
+#   PERSIST_REPO_VARIABLES (default: auto) when "auto" or "true", persist the
+#                        non-secret outputs as GitHub Actions repository
+#                        variables (API_CLIENT_ID, SPA_CLIENT_ID, API_SCOPE) via
+#                        the `gh` CLI when it is installed and authenticated. Set
+#                        to "false" to skip. When `gh` is unavailable or not
+#                        authenticated the exact `gh variable set` commands are
+#                        printed instead, so nothing is silently missed.
+#   GH_REPO / GITHUB_REPOSITORY (optional) target repo (owner/name) for the
+#                        variable writes; inferred from the local git remote
+#                        when unset.
 #
 # Outputs (written to $GITHUB_OUTPUT when set, otherwise echoed):
 #   api_client_id, spa_client_id, api_scope
@@ -52,6 +62,7 @@ SPA_REDIRECT_URI="${SPA_REDIRECT_URI:-https://localhost:3000}"
 SPA_DEPLOYED_REDIRECT_URI="${SPA_DEPLOYED_REDIRECT_URI:-}"
 SIGN_IN_AUDIENCE="${SIGN_IN_AUDIENCE:-AzureADMyOrg}"
 STATE_FILE="${STATE_FILE:-.demo-state.json}"
+PERSIST_REPO_VARIABLES="${PERSIST_REPO_VARIABLES:-auto}"
 
 log() { printf '>>> %s\n' "$*" >&2; }
 
@@ -305,3 +316,33 @@ log "Provisioning complete."
 echo "api_client_id=$API_ID"
 echo "spa_client_id=$SPA_ID"
 echo "api_scope=$API_SCOPE"
+
+# -----------------------------------------------------------------------------
+# Persist the non-secret outputs as GitHub Actions repository variables so the
+# evidence workflow (and anyone reading the config contract) does not need a
+# manual repo-settings step. Only public identifiers are written here; the API
+# certificate/credential is never touched. Controlled by PERSIST_REPO_VARIABLES.
+# -----------------------------------------------------------------------------
+persist_repo_variables() {
+  [[ "$PERSIST_REPO_VARIABLES" == "false" ]] && return 0
+
+  local repo_args=()
+  local target_repo="${GH_REPO:-${GITHUB_REPOSITORY:-}}"
+  [[ -n "$target_repo" ]] && repo_args=(-R "$target_repo")
+
+  if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+    log "Persisting repository variables via gh (API_CLIENT_ID, SPA_CLIENT_ID, API_SCOPE)"
+    gh variable set API_CLIENT_ID "${repo_args[@]}" --body "$API_ID" >/dev/null
+    gh variable set SPA_CLIENT_ID "${repo_args[@]}" --body "$SPA_ID" >/dev/null
+    gh variable set API_SCOPE "${repo_args[@]}" --body "$API_SCOPE" >/dev/null
+    log "Repository variables set."
+  else
+    log "gh CLI not available or not authenticated; not writing repository variables."
+    log "To set them manually, run (after 'gh auth login'):"
+    printf '    gh variable set API_CLIENT_ID --body %q\n' "$API_ID" >&2
+    printf '    gh variable set SPA_CLIENT_ID --body %q\n' "$SPA_ID" >&2
+    printf '    gh variable set API_SCOPE --body %q\n' "$API_SCOPE" >&2
+  fi
+}
+
+persist_repo_variables

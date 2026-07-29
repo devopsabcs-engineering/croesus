@@ -27,8 +27,11 @@ Correct the repository's documentation, tests, and evidence tooling to state the
 * api/Tests/NegativeControlTests.cs - Renamed the audience-distinctness test to claim only what it proves; added a labeled Graph-audience rejection test; removed a flaky in-process admit-path test (replaced by the deterministic stubbed path in MeControllerTests); added a no-op Dispose override to the host factory (Phase 2 + Phase 5 fix)
 * api/Tests/ReplayEndpointTests.cs - Parameterized replay outcomes (200/401/403/transport failure) asserting fixed-target forwarding and token redaction without assigning a binding cause; added a no-op Dispose override to the host factory base (Phase 2 + Phase 5 fix)
 * api/Tests/MeControllerTests.cs - Added a no-op Dispose override to the OBO-success host factory so the shared-key host is not disposed mid-run (Phase 5 fix)
-* .github/workflows/deploy-croesus.yml - Injected VITE_ENABLE_REPLAY_DEMO into the shared SPA build gated on vars.ENABLE_REPLAY_LAB; evidence/replay-lab queries switched to immutable app IDs with best-effort correlation notes and UTC-timestamped artifacts (Phase 3, Steps 3.1-3.2)
+* .github/workflows/deploy-croesus.yml - Injected VITE_ENABLE_REPLAY_DEMO into the shared SPA build gated on vars.ENABLE_REPLAY_LAB; evidence/replay-lab queries switched to immutable app IDs with best-effort correlation notes and UTC-timestamped artifacts (Phase 3, Steps 3.1-3.2); made the evidence correlation step resilient to a missing vars.API_CLIENT_ID (Graph-only filter + explanatory note instead of an empty-GUID clause) (WI-05)
 * scripts/evidence-kql.kusto - Filters switched from display names to immutable AppId / Graph well-known appId; correlation joins labeled best-effort (Phase 3, Step 3.2)
+* scripts/provision-app-registrations.sh - Added optional GitHub repo-variable persistence (PERSIST_REPO_VARIABLES, default auto): sets API_CLIENT_ID, SPA_CLIENT_ID, and API_SCOPE via the gh CLI when authenticated, or prints the exact gh commands otherwise — removes the manual repo-settings step for WI-05 (WI-05)
+* docs/configuration-contract.md - API delegated-scope row marks AzureAd:Scopes as not the enforcement path and names [RequiredScope("access_as_user")] on both controllers as the enforcement mechanism (Phase 1, Step 1.3); documented the provision-script auto-persistence of API_CLIENT_ID/SPA_CLIENT_ID/API_SCOPE (WI-05)
+* assets/croesus-escalation-packet.md - Aligned with the revised position (1008 is a broker-binding status, not replay proof; authorization code with PKCE is the leading hypothesis); added the decisive `/token` `Origin`-header ask with a privacy-safe fields/hashes-only rule, the full app/service-principal inventory ask, and the Central-vs-Conseiller ask (WI-01/02/03 ready-to-send)
 
 ### Removed
 
@@ -43,7 +46,7 @@ Correct the repository's documentation, tests, and evidence tooling to state the
 
 ## Release Summary
 
-All five phases complete plus two in-repo follow-ons (WI-06, WI-07). 4 files added, 9 files modified, 0 removed.
+All five phases complete plus four in-repo follow-ons (WI-05, WI-06, WI-07, and the ready-to-send escalation packet for WI-01/02/03). 4 files added, 10 files modified, 0 removed.
 
 Added:
 * api/Tests/MeControllerTests.cs - deterministic OBO happy-path coverage
@@ -54,9 +57,10 @@ Added:
 Modified:
 * README.md, docs/evidence-narrative.md, docs/obo-demo-guide.md, docs/configuration-contract.md - evidence-qualified position, correct 1008 framing, registration-correctness note, enforcement-path fix (obo-demo-guide also got a markdownlint hygiene pass, WI-06)
 * assets/app-registration-analysis-findings.md - revised-position banner and evidence-qualified replay/1008 claims (WI-07)
+* assets/croesus-escalation-packet.md - revised-position framing plus the decisive `/token` Origin-header, full-inventory, and Central-vs-Conseiller asks (WI-01/02/03 ready-to-send)
 * api/Tests/NegativeControlTests.cs - renamed audience-distinctness test; added labeled middleware tests; removed a flaky admit-path test; no-op Dispose override
 * api/Tests/ReplayEndpointTests.cs - parameterized 200/401/403/transport outcomes, status-neutral; no-op Dispose override
-* .github/workflows/deploy-croesus.yml - VITE_ENABLE_REPLAY_DEMO wiring; immutable app-ID evidence filters; timestamped artifacts
+* .github/workflows/deploy-croesus.yml - VITE_ENABLE_REPLAY_DEMO wiring; immutable app-ID evidence filters; timestamped artifacts; evidence step resilient to a missing API_CLIENT_ID (WI-05)
 * scripts/evidence-kql.kusto - immutable app-ID filters, best-effort correlation labels
 
 Validation: `dotnet test api/Tests/Croesus.Api.Tests.csproj` = 19 passed / 4 skipped / 0 failed, verified deterministic across 10 consecutive runs; `npm --prefix spa run build` (with VITE_ENABLE_REPLAY_DEMO=true) = clean. Documentation validated via VS Code markdownlint diagnostics (no new findings).

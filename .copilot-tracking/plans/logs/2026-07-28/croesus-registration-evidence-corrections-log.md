@@ -80,9 +80,19 @@ Items identified during planning that fall outside current scope.
 * WI-04: Decide the fate of the README browser-1008 exhibit after verifying whether the captured browser row is a legitimate binding-status telemetry value — (medium)
   * Source: DR-01
   * Dependency: sign-in-log verification
-* WI-05: Define a `vars.API_CLIENT_ID` repository variable (the API's immutable appId GUID) so the evidence-job inline KQL filters on a real GUID rather than an empty value; capture it from `scripts/provision-app-registrations.sh` output — (medium)
+* WI-01: Advanced (ready-to-send) — the vendor ask for one successful and one failing correlated transaction, with the decisive `/token` `Origin`-header capture and a privacy-safe presence/hashes-only rule, is now in assets/croesus-escalation-packet.md (Q7, §3). Obtaining the capture still requires Croesus. (high)
+  * Source: research Remaining Evidence Gaps and DR-02
+  * Dependency: vendor response
+* WI-02: Advanced (ready-to-send) — the complete app-registration / service-principal inventory ask (including any confidential `web`/API registration) is now Q8 in the escalation packet. Obtaining it still requires the Desjardins/Croesus tenants. (high)
+  * Source: research Remaining Evidence Gaps
+  * Dependency: tenant export
+* WI-03: Advanced (ready-to-send) — the Central-vs-Conseiller comparison ask is now Q9 in the escalation packet. (medium)
+  * Source: research Actionable Next Steps
+  * Dependency: vendor response
+* WI-05: Fixed (in-repo) — two-part resolution. (1) The evidence correlation step no longer emits a misleading empty `AppId == ''` clause when vars.API_CLIENT_ID is unset; it filters the Microsoft Graph leg only and prints a note. (2) scripts/provision-app-registrations.sh now auto-persists API_CLIENT_ID, SPA_CLIENT_ID, and API_SCOPE as repository variables via the `gh` CLI when authenticated (PERSIST_REPO_VARIABLES, default auto), or prints the exact `gh variable set` commands otherwise. The app registration itself is created by the same script (`az ad app create`), so one provisioning run now both creates the API app and sets the variable — no manual repo-settings step. (medium)
   * Source: Phase 3, Step 3.2
-  * Dependency: provisioning run output
+  * Dependency: a provisioning run in the tenant (creates the app + the GUID); `gh auth login` for automatic variable writes
+  * Verified 2026-07-29 (demo tenant MngEnvMCAP675646): the mock app registrations and repo variables already exist — API_CLIENT_ID `bc6338a5-a02a-4ddf-b1f4-9a9234bed8a8`, SPA_CLIENT_ID `06ef7c0a-9df3-4bcd-8b6f-ee275ca0adc2`, API_SCOPE `api://bc6338a5-a02a-4ddf-b1f4-9a9234bed8a8/access_as_user`, KEY_VAULT_NAME `kv-croesus-a65e90` (all repo variables set 2026-06-29). Both service principals present. Nothing to create; WI-05 is satisfied end to end. Note: invoking `az` through WSL interop produced transient `JSONDecodeError` responses (native Windows `az` works reliably), so provisioning should be run from Windows/Cloud Shell rather than WSL.
 * WI-06: Fixed — the two pre-existing markdownlint findings in docs/obo-demo-guide.md (MD028 line 76, MD012 line 80) were resolved (HTML-comment separator between the adjacent alerts; collapsed the double blank line). (low)
   * Source: Phase 1 self-review
   * Dependency: none

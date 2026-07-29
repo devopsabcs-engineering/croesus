@@ -182,15 +182,26 @@ jobs:
           # that identical bearer bytes were reused across requests.
           api_app_id='${{ vars.API_CLIENT_ID }}'
           graph_app_id='00000003-0000-0000-c000-000000000000'
+          # Build the leg filter defensively. When vars.API_CLIENT_ID is unset,
+          # filter on the Microsoft Graph leg only (avoids a misleading empty
+          # AppId == '' clause) and note the gap in the evidence summary so no
+          # manual debugging is needed.
+          if [ -n "$api_app_id" ]; then
+            leg_filter="AppId == '${api_app_id}' or ResourceIdentity == '${graph_app_id}'"
+            leg_note="Filtered by immutable app id \`${api_app_id}\` (API) / \`${graph_app_id}\` (Microsoft Graph)."
+          else
+            leg_filter="ResourceIdentity == '${graph_app_id}'"
+            leg_note="vars.API_CLIENT_ID is not set, so only the Microsoft Graph leg (\`${graph_app_id}\`) is shown. Set the repository variable API_CLIENT_ID (the API app registration immutable appId, printed by scripts/provision-app-registrations.sh) to include the API leg."
+          fi
           query="AADNonInteractiveUserSignInLogs
           | where TimeGenerated > ago(1h)
-          | where AppId == '${api_app_id}' or ResourceIdentity == '${graph_app_id}'
+          | where ${leg_filter}
           | project TimeGenerated, CorrelationId, AppId, AppDisplayName, ResourceIdentity, ResourceDisplayName, UserPrincipalName, Status
           | sort by TimeGenerated asc"
           {
             echo "### OBO two-leg correlation (non-interactive sign-in logs)"
             echo ""
-            echo "_Filtered by immutable app id \`${api_app_id}\` (API) / \`${graph_app_id}\` (Microsoft Graph). Correlation is best-effort: it shows two distinct sign-in legs, not identical bearer-token bytes reused across requests._"
+            echo "_${leg_note} Correlation is best-effort: it shows two distinct sign-in legs, not identical bearer-token bytes reused across requests._"
             echo ""
           } | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
           if az monitor log-analytics query \
