@@ -3,7 +3,7 @@
 > [!IMPORTANT]
 > **Next step (one open item blocks final classification).** We still need **one captured `/token` request** from a successful and a failing transaction, showing whether the redemption carries an **`Origin` header**. That single fact classifies the grant: an `Origin` header means a browser authorization-code redemption (consistent with the `spa` registrations); no `Origin` header means a genuine server-side redemption, which a `spa` public client cannot service (Entra returns `AADSTS9002327`) and which would instead need a `web` confidential-client registration.
 >
-> **Who to ask:** the capture must come from **Croesus (Olivier Leblanc)**, who owns the Central backend and the `/token` call. Keep **Mathieu Santerre (Desjardins)** in the loop as the internal customer contact. Send the [Croesus escalation packet](assets/croesus-escalation-packet.md) and point to **Q7** (the `Origin`-header capture; presence indicators and SHA-256 hashes only, never raw tokens or secrets).
+> **Who can capture it (self-verify first):** Desjardins can often answer this **without the vendor** — see [Who can capture the `/token` `Origin` header](#who-can-capture-the-token-origin-header). The raw `Origin` header lives only on the HTTP request the caller sends to Entra, so it is not a field in the tenant sign-in logs. But if the redemption runs in the **user's browser**, a Desjardins user can read the `Origin` header directly with browser DevTools, and the tenant sign-in logs independently show whether the second-leg redemption **succeeds** or **fails with `AADSTS9002327`**. Only if those checks confirm a genuine **server-side** call must the capture come from **Croesus (Olivier Leblanc)**, who then exclusively holds the outbound `/token` request; send the [Croesus escalation packet](assets/croesus-escalation-packet.md) and point to **Q7** (presence indicators and SHA-256 hashes only, never raw tokens or secrets). Keep **Mathieu Santerre (Desjardins)** in the loop as the internal customer contact.
 >
 > **Guardrail:** until the grant is classified, do not change Conditional Access, allowlist AWS IPs, or mandate OBO.
 
@@ -60,6 +60,30 @@ SigninLogs
 
 > [!NOTE]
 > This browser-context `1008` row is retained as a captured exhibit pending verification (tracked as DR-01). Token Protection supports native applications only and does not cover Microsoft Graph, so whether a browser sign-in to a custom API legitimately carries an `Unbound (1008)` binding status is a factual question under review. Read the row as a binding-status observation, not as proof of token replay.
+
+## Who can capture the `/token` `Origin` header
+
+Desjardins created and owns the three app registrations and the Entra tenant; Croesus runs the backend that calls Entra's `/token` endpoint. That split determines who can observe what, because the `Origin` header exists only on the HTTP request itself.
+
+The `/token` endpoint is **Microsoft Entra's** (`login.microsoftonline.com/{tenant}/oauth2/v2.0/token`). The `Origin` header is an HTTP header on the request **sent to** that endpoint, so it physically exists only at the two ends of that one hop: the **caller** (Croesus's server code, or the browser Croesus serves) and **Microsoft Entra**, which receives it. Entra does **not** surface the raw `Origin` header as a field in the tenant sign-in logs. Owning the app registration lets Desjardins read the sign-in log entry and change the registration — it does not let them read the raw header off Croesus's request.
+
+The practical catch: whether Desjardins can capture it alone depends on the very thing under test.
+
+- If the redemption runs in the **user's browser** (the normal `spa` pattern), the request passes through the Desjardins user's machine, so a Desjardins user **can capture it directly** with browser DevTools — the browser sets `Origin` automatically. No vendor needed.
+- If the redemption runs **server-side at Croesus** (Olivier's stated claim), it never touches the Desjardins user's browser or network, so **only Croesus can capture it**.
+
+### Self-verify sequence (cheapest first)
+
+1. **Browser DevTools (Desjardins, no vendor).** Have a Desjardins user sign in to Central with DevTools open (Network tab, preserve log) and filter for a POST to `oauth2/v2.0/token`. If it appears, the redemption is browser-side; inspect its request headers for `Origin` (it will be present) — question answered, consistent with the `spa` registrations. If no `/token` POST appears for the second (non-interactive) leg, the redemption is happening on Croesus's server. A browser HAR contains real codes and tokens, so treat it as sensitive: record only "`Origin` present: yes/no", never share the raw trace.
+2. **Entra sign-in logs (Desjardins, no vendor).** Entra's behaviour is deterministic: a `spa`-platform client can only redeem an authorization code from a request carrying `Origin`, and rejects a plain server-side redemption with `AADSTS9002327`. So the outcome in the tenant logs is strong indirect proof. Query the non-interactive second leg (filter on the AWS IPs `3.97.32.113` / `3.99.119.124`, or by app/resource) and read the result: a failure with `AADSTS9002327` proves a server-side, no-`Origin` redemption against a `spa` client (which then needs a `web` confidential-client registration); a success implies the redemption actually carries an `Origin` (browser) — the surprising case worth a direct Croesus capture. The recorded client-app (Browser vs non-browser) and IP add corroboration.
+3. **Escalate to Croesus (only if steps 1-2 show a genuine server-side call).** The header then lives exclusively on Croesus's machine, so only they can produce it. Request the redacted `/token` per **Q7** of the [escalation packet](assets/croesus-escalation-packet.md) — `Origin` presence, `grant_type`, client-auth method, and audience, as presence indicators or SHA-256 hashes only.
+
+| Question | Who can answer |
+| --- | --- |
+| Raw `Origin` header on a **server-side** `/token` call | Croesus only (their outbound request; never reaches Desjardins users) |
+| `Origin` header on a **browser-side** `/token` call | Desjardins directly, via browser DevTools |
+| Did the second-leg redemption succeed or fail with `AADSTS9002327`? | Desjardins, from its own Entra sign-in logs |
+| Intended flow definition and AWS egress ranges | Croesus |
 
 ## How to fix it properly
 
