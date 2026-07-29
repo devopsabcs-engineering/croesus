@@ -6,6 +6,11 @@
 
 ---
 
+> [!IMPORTANT]
+> Revised position (2026-07-28). A later review corrected two claims in this 2026-06-15 report. First, `/oauth2/v2.0/token` and Token Protection status `1008` do not by themselves prove access-token replay: `1008` means the client is not integrated with the platform broker (Windows Account Manager), a device- and session-binding status, and Token Protection is native-app-only and does not cover Microsoft Graph. Second, the SPA-platform registrations are consistent with an ordinary authorization-code-with-PKCE redemption (the current leading explanation), which is redeemed from the browser; a literal server-side redemption of a `spa` authorization code is rejected by Microsoft Entra with `AADSTS9002327`. The grant remains unclassified pending one captured `/token` request showing whether an `Origin` header is present. What still holds: On-Behalf-Of is structurally impossible with these registrations (no secret, certificate, or exposed API scope), and the Conditional Access denial is correct-by-design. See docs/evidence-narrative.md and .copilot-tracking/research/2026-07-28/croesus-token-endpoint-revised-position-research.md for the corrected analysis. The categorical "token replay" wording below is retained for historical record but is superseded by this note.
+
+---
+
 ## 0. Executive Summary
 
 **Core question:** the second, non-interactive sign-in seen coming from the Croesus SaaS AWS IP — blocked by Conditional Access (CA) in non-prod — is this **expected OAuth behaviour** or a **misconfiguration**, and should the fix be **internal (Option A)** or **escalated to the vendor (Option B)**?
@@ -14,9 +19,9 @@
 
 1. The existence of a second, server-initiated token event from the Croesus AWS backend is a property of the **vendor's SaaS architecture**, not a setting Desjardins toggled. It is "expected" of this vendor's design.
 2. The **Conditional Access block of that event in non-prod is correct-by-design** (Zero Trust). It is **not** a Desjardins misconfiguration.
-3. The flow **cannot be a standards-compliant Entra On-Behalf-Of (OBO)** given the registrations (no client secret, no certificate, no exposed API scope). The raw sign-in logs confirm the second event is a **server-side token replay** (Token Protection status "unbound", code 1008) targeting Microsoft Graph — not a custom backend-API audience.
+3. The flow **cannot be a standards-compliant Entra On-Behalf-Of (OBO)** given the registrations (no client secret, no certificate, no exposed API scope). The sign-in logs record the second event as Token Protection status "unbound" (code 1008) targeting Microsoft Graph. Per the revised position above, `1008` is a device/broker-binding status, not proof of token replay, and the grant is unclassified pending a captured request; the SPA registrations are equally consistent with an authorization-code-with-PKCE redemption.
 
-**Bottom line:** the CA denial is expected and correct. The second sign-in is driven by the vendor's server-side design — confirmed by the raw sign-in logs to be a Token-Protection-"unbound" replay, **not** a standards OBO. The only open item is whether Croesus *intended* this token replay or a true OBO that was mis-implemented; that single fact is owed by the vendor (and is held in the RMS-locked OAuth integration report we could not open).
+**Bottom line:** the CA denial is expected and correct. The second sign-in is driven by the vendor's server-side design. Per the revised position above, the `1008` "unbound" status is a device/broker-binding signal (client not integrated with WAM), not proof of token replay, and does not identify the grant; the SPA registrations are consistent with an authorization-code-with-PKCE redemption. What is certain is that the registrations **cannot** perform a standards OBO. The open item is the authoritative flow definition, owed by the vendor (and held in the RMS-locked OAuth integration report we could not open).
 
 **Recommended path:** **Option B first** (escalate to Croesus for the authoritative flow definition + AWS egress IP ranges), then a **scoped Option A** internal accommodation — preferring Entra B2B "Trust compliant devices" to fix the cross-tenant root cause, with a scoped CA trusted-location exception + MFA as the lower-assurance alternative. Do **not** frame the CA policy as broken.
 
@@ -91,7 +96,7 @@ Ordered by severity. Items 1–3 are the actionable security/vulnerability findi
 
 | # | Severity | Finding | Why it matters | Recommended action |
 | --- | --- | --- | --- | --- |
-| V1 | **High (design-level)** | The second event is a **server-side token replay** ("unbound" / Token Protection code 1008), not a bound or OBO token. The replayed token inherits the original session's `deviceId` and "Azure AD joined / compliant" device claims, but is presented from an **AWS IP with no real device context**. | A replayed token carrying compliant-device claims from an external IP can satisfy **device-based CA grants it should not**. In PROD it currently succeeds and is only *flagged* (not blocked) by Token Protection. | Confirm intent with Croesus (Option B). Enforce a **Token Protection / token-binding CA control** so unbound (replayed) tokens are denied. |
+| V1 | **High (design-level)** | The second event presents from an **AWS IP with no real device context** and records Token Protection status "unbound" (code 1008). Per the revised position above, `1008` indicates the client is not broker (WAM) integrated — a device/session-binding status — not proof of token replay; the grant is unclassified pending a captured request. The event carries the original session's `deviceId` and "compliant" device claims but originates from an external IP. | A non-broker-bound token carrying compliant-device claims from an external IP can satisfy **device-based CA grants it should not**. In PROD it currently succeeds and is only *flagged* (not blocked) by Token Protection. | Confirm the flow with Croesus (Option B). Enforce a **Token Protection / token-binding CA control** so device-unbound tokens are denied. |
 | V2 | **Medium** | **Environment/tenant boundary drift:** a UAT/dev-named registration (`dev-prod.txt`) lives in the PROD tenant. | Erodes blast-radius separation and operational clarity; makes CA scoping and incident triage harder. | Rename/relocate or clearly document the dev-prod registration; confirm it is the intended non-prod app object in PROD. |
 | V3 | **Low (hygiene)** | **dev-dev** has implicit ID-token issuance **enabled** and an extra **SiteMinder federation redirect** (`spsfondation.dev…/oidc-tool.html`) that the prod-tenant apps do not. | Residual/test surface; implicit grant is legacy and best disabled when auth-code + PKCE is used. | Disable implicit ID-token issuance on dev-dev; review/remove the SiteMinder test redirect if not required. Non-causal to the blocked event. |
 
@@ -113,7 +118,7 @@ Separate three distinct facts:
 
 1. **Vendor-driven event.** The second, server-initiated token event from the Croesus AWS backend is a property of the vendor's SaaS architecture. It is "expected" of this vendor's design and is **not** a Desjardins app-registration mistake.
 2. **CA block is correct-by-design.** Denying a token from an untrusted AWS IP with no compliant-device context in the Dev tenant is Conditional Access working correctly (Zero Trust). It is **not** a misconfiguration.
-3. **Cannot be a standards OBO.** A genuine Entra OBO requires the middle tier to be a **confidential client** (secret or certificate) **and** the app to **expose an API** (custom scope / Application ID URI). All three exports have empty `passwordCredentials`, `keyCredentials`, and `api.oauth2PermissionScopes`, with SPA-only platform. The raw sign-in logs confirm the second event is a **token replay** (Token Protection "unbound", code 1008) targeting **Microsoft Graph**, not a custom backend audience.
+3. **Cannot be a standards OBO.** A genuine Entra OBO requires the middle tier to be a **confidential client** (secret or certificate) **and** the app to **expose an API** (custom scope / Application ID URI). All three exports have empty `passwordCredentials`, `keyCredentials`, and `api.oauth2PermissionScopes`, with SPA-only platform, so OBO is structurally impossible. The second event records Token Protection status "unbound" (code 1008) targeting Microsoft Graph; per the revised position above, that status is a device/broker-binding signal, not proof of token replay, and the SPA registrations are equally consistent with an authorization-code-with-PKCE redemption.
 
 ### Root cause — cross-tenant device-compliance gap
 
@@ -121,7 +126,7 @@ Devices are compliant/managed in the **Prod** tenant (Intune / hybrid join), but
 
 ### Raw sign-in log evidence (prod-prod scenario)
 
-| Field | Sign-in #1 (interactive) | Sign-in #2 (replay) |
+| Field | Sign-in #1 (interactive) | Sign-in #2 (second, server-side event) |
 | --- | --- | --- |
 | IsInteractive | TRUE | FALSE |
 | IP Address | (Desjardins corp) | 3.97.32.113 (Amazon AWS) |
@@ -193,13 +198,13 @@ sequenceDiagram
 
 | Gap | Status | How to close |
 | --- | --- | --- |
-| Croesus's **intended** flow (true OBO vs deliberate replay) | **Open** — held in RMS-locked OAuth integration report | Option B escalation, or an RMS-unlocked copy of the report |
+| Croesus's **intended** flow (true OBO vs another server-side flow such as authorization-code redemption) | **Open** — held in RMS-locked OAuth integration report | Option B escalation, or an RMS-unlocked copy of the report |
 | Verbatim **AADSTS failure code + CA policy name** for the non-prod DEV-tenant denial | **Open** | Entra sign-in log query (see verification guide) |
 | App **owners** and **admin-consent grants** | **Open** — not in application-object exports | `az ad app owner list` / `az ad app permission list-grants` |
 | Dev/Prod **tenant IDs** behind the two publisher domains | **Open** | OIDC discovery query (see verification guide) |
 | Croesus **AWS egress IP ranges** (full set) | **Partial** — `3.97.32.113`, `3.99.119.124` observed | Vendor-published ranges via Option B |
 
-> Two authoritative customer documents (`croesus_entra_oauth_integration_report_*.pdf` and `PROD.docx`) are **Azure RMS / MIP encrypted** ("Highly Confidential \ Internal Only") and could not be opened. They likely hold the authoritative flow and prod reference behaviour. The readable screenshots doc supplied the missing raw sign-in logs, which is why the determination above is now evidence-backed rather than inferred.
+> Two authoritative customer documents (`croesus_entra_oauth_integration_report_*.pdf` and `PROD.docx`) are **Azure RMS / MIP encrypted** ("Highly Confidential \ Internal Only") and could not be opened. They likely hold the authoritative flow and prod reference behaviour. The readable screenshots doc supplied the raw sign-in logs used here; note (per the revised-position banner) that those logs establish network, device-binding, and session observations but do not by themselves classify the OAuth grant.
 
 ### 6.2 Considered alternatives (and why not)
 
@@ -215,6 +220,6 @@ sequenceDiagram
 1. **Send the escalation packet** (`assets/croesus-escalation-packet.md`) to Croesus and obtain the flow definition + full AWS egress IP ranges.
 2. **Run the verification commands** (`assets/app-registration-verification.md`) to capture the verbatim AADSTS/CA-policy evidence, owners, admin-consent, and tenant IDs.
 3. **Apply the cross-tenant accommodation** — prefer B2B "Trust compliant devices"; otherwise a scoped CA trusted-location exception + MFA for the non-prod app only.
-4. **Enforce a Token Protection / token-binding CA control** so "unbound" (replayed) tokens are denied even in PROD (addresses finding V1).
+4. **Enforce a Token Protection / token-binding CA control** so device-unbound tokens are denied even in PROD (addresses finding V1).
 5. **Clean up hygiene** — disable implicit ID-token issuance on dev-dev, review the SiteMinder test redirect, and resolve the dev-prod naming/tenant drift (findings V2, V3).
 6. **Re-test the non-prod (dev-prod) scenario** and compare against the prod-prod reference.

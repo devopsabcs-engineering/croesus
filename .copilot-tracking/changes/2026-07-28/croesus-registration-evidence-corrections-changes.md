@@ -21,7 +21,8 @@ Correct the repository's documentation, tests, and evidence tooling to state the
 
 * README.md - Made replay/1008/OBO-required claims evidence-qualified: authorization code with PKCE is the leading unclassified hypothesis, 1008 relabeled as a broker-binding status, OBO reframed as one contingent option; browser-1008 exhibit retained with a DR-01 verification NOTE (Phase 1, Step 1.1)
 * docs/evidence-narrative.md - Certificate-thumbprint claim changed to credential source/name; API-token-to-Graph 401 labeled structurally asserted; leg-2 jti/iat/decoded-audience replaced with correlation-id/token-source/expiry; added a Registration correctness section (spa-vs-web verdict, verbatim AADSTS9002327, Origin-header decisive artifact, 1008-not-replay guard) (Phase 1, Steps 1.2, 1.4)
-* docs/obo-demo-guide.md - Downstream token-B jti/iat, decoded-audience, and thumbprint claims aligned to what the code emits; negative-test wording made status-neutral (Phase 1, Step 1.2)
+* docs/obo-demo-guide.md - Downstream token-B jti/iat, decoded-audience, and thumbprint claims aligned to what the code emits; negative-test wording made status-neutral (Phase 1, Step 1.2); fixed two pre-existing markdownlint findings (MD028 blank line between adjacent alerts, MD012 double blank line) (WI-06)
+* assets/app-registration-analysis-findings.md - Added a dated revised-position banner and evidence-qualified the categorical "1008 confirms token replay" claims (Executive Summary, V1 finding, Determination, sign-in comparison table, remediation, evidence-gaps) while keeping the correct "OBO structurally impossible" reasoning (WI-07)
 * docs/configuration-contract.md - API delegated-scope row marks AzureAd:Scopes as not the enforcement path and names [RequiredScope("access_as_user")] on both controllers as the enforcement mechanism (Phase 1, Step 1.3)
 * api/Tests/NegativeControlTests.cs - Renamed the audience-distinctness test to claim only what it proves; added a labeled Graph-audience rejection test; removed a flaky in-process admit-path test (replaced by the deterministic stubbed path in MeControllerTests); added a no-op Dispose override to the host factory (Phase 2 + Phase 5 fix)
 * api/Tests/ReplayEndpointTests.cs - Parameterized replay outcomes (200/401/403/transport failure) asserting fixed-target forwarding and token redaction without assigning a binding cause; added a no-op Dispose override to the host factory base (Phase 2 + Phase 5 fix)
@@ -42,7 +43,7 @@ Correct the repository's documentation, tests, and evidence tooling to state the
 
 ## Release Summary
 
-All five phases complete. 4 files added, 8 files modified, 0 removed.
+All five phases complete plus two in-repo follow-ons (WI-06, WI-07). 4 files added, 9 files modified, 0 removed.
 
 Added:
 * api/Tests/MeControllerTests.cs - deterministic OBO happy-path coverage
@@ -51,9 +52,10 @@ Added:
 * api/Tests/AssemblyInfo.cs - serializes the test assembly to keep the flaky-fix deterministic
 
 Modified:
-* README.md, docs/evidence-narrative.md, docs/obo-demo-guide.md, docs/configuration-contract.md - evidence-qualified position, correct 1008 framing, registration-correctness note, enforcement-path fix
-* api/Tests/NegativeControlTests.cs - renamed audience-distinctness test; added labeled middleware tests; deterministic accept-path assertion
-* api/Tests/ReplayEndpointTests.cs - parameterized 200/401/403/transport outcomes, status-neutral
+* README.md, docs/evidence-narrative.md, docs/obo-demo-guide.md, docs/configuration-contract.md - evidence-qualified position, correct 1008 framing, registration-correctness note, enforcement-path fix (obo-demo-guide also got a markdownlint hygiene pass, WI-06)
+* assets/app-registration-analysis-findings.md - revised-position banner and evidence-qualified replay/1008 claims (WI-07)
+* api/Tests/NegativeControlTests.cs - renamed audience-distinctness test; added labeled middleware tests; removed a flaky admit-path test; no-op Dispose override
+* api/Tests/ReplayEndpointTests.cs - parameterized 200/401/403/transport outcomes, status-neutral; no-op Dispose override
 * .github/workflows/deploy-croesus.yml - VITE_ENABLE_REPLAY_DEMO wiring; immutable app-ID evidence filters; timestamped artifacts
 * scripts/evidence-kql.kusto - immutable app-ID filters, best-effort correlation labels
 

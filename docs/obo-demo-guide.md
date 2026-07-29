@@ -74,9 +74,10 @@ The script prints the identifiers you need next: the SPA client ID, the API clie
 > [!IMPORTANT]
 > Register the deployed SPA origin as a redirect URI. The SPA's MSAL config uses `redirectUri: window.location.origin`, so the deployed URL (for example `https://croesus-spa.azurewebsites.net`) must be a SPA-platform redirect URI on the SPA registration. Pass it through `SPA_DEPLOYED_REDIRECT_URI` as shown; otherwise an interactive sign-in from the deployed app fails with `AADSTS50011` (redirect URI mismatch). The local dev URI (`https://localhost:3000`) is always registered.
 
+<!-- -->
+
 > [!NOTE]
 > The script is idempotent. It looks up each registration by display name and reuses the existing object, so re-running it does not create duplicates.
-
 
 Record the outputs as GitHub Actions repository variables. The full mapping, including which component reads each value, lives in [configuration-contract.md](configuration-contract.md).
 

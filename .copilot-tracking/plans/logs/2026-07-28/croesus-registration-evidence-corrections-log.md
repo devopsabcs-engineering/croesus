@@ -83,10 +83,10 @@ Items identified during planning that fall outside current scope.
 * WI-05: Define a `vars.API_CLIENT_ID` repository variable (the API's immutable appId GUID) so the evidence-job inline KQL filters on a real GUID rather than an empty value; capture it from `scripts/provision-app-registrations.sh` output — (medium)
   * Source: Phase 3, Step 3.2
   * Dependency: provisioning run output
-* WI-06: Optionally fix two pre-existing markdownlint findings in docs/obo-demo-guide.md (MD028 at line 76, MD012 at line 80) in a hygiene pass; both predate this work and sit outside the edited regions — (low)
+* WI-06: Fixed — the two pre-existing markdownlint findings in docs/obo-demo-guide.md (MD028 line 76, MD012 line 80) were resolved (HTML-comment separator between the adjacent alerts; collapsed the double blank line). (low)
   * Source: Phase 1 self-review
   * Dependency: none
-* WI-07: Review assets/app-registration-analysis-findings.md (linked from README) for the same categorical replay framing; it was outside the Phase 1 four-file scope — (low)
+* WI-07: Fixed — assets/app-registration-analysis-findings.md (linked from README) carried the same categorical replay framing; added a dated revised-position banner and evidence-qualified the "1008 confirms token replay" claims while keeping the correct OBO-impossible reasoning. (low)
   * Source: Phase 1 suggested additional steps
   * Dependency: none
 * WI-08: Consider a Testing-only global exception handler in the API so downstream failures surface as HTTP 500 rather than propagating out of the TestServer, enabling a concrete-status accept-path assertion — (low)
