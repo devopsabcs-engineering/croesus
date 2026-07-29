@@ -2,7 +2,7 @@
 title: Croesus Demo Configuration Contract
 description: Single source-of-truth catalog of every public (non-secret) configuration value for the Croesus mock SaaS OBO-flow demo and the consumer that reads it
 author: Croesus Demo Team
-ms.date: 2026-06-29
+ms.date: 2026-07-28
 ms.topic: reference
 keywords:
   - configuration
@@ -31,7 +31,7 @@ Each row below names one value, where it is defined, and every component that re
 | Microsoft Entra tenant ID | `AZURE_TENANT_ID` | Provisioning output, stored as repo variable | `VITE_TENANT_ID` | `AzureAd:TenantId` | `tenantId` | `vars.AZURE_TENANT_ID` |
 | SPA (public client) app registration ID | `SPA_CLIENT_ID` | `provision` script output, stored as repo variable | `VITE_SPA_CLIENT_ID` | not used | `spaClientId` | `vars.SPA_CLIENT_ID` |
 | API (confidential client) app registration ID | `API_CLIENT_ID` | `provision` script output, stored as repo variable | not used | `AzureAd:ClientId` | `apiClientId` | `vars.API_CLIENT_ID` |
-| API delegated scope | `API_SCOPE` (`api://<API_CLIENT_ID>/access_as_user`) | Derived from `API_CLIENT_ID` by the `provision` script | `VITE_API_SCOPE` | `AzureAd:Scopes` | not used | `vars.API_SCOPE` |
+| API delegated scope | `API_SCOPE` (`api://<API_CLIENT_ID>/access_as_user`) | Derived from `API_CLIENT_ID` by the `provision` script | `VITE_API_SCOPE` | `AzureAd:Scopes` (not the enforcement path; see note) | not used | `vars.API_SCOPE` |
 | API base URL the SPA calls | `API_BASE_URL` | Bicep output (App Service hostname) | `VITE_API_BASE_URL` | not used | derived output | `vars.API_BASE_URL` |
 | SPA App Service / Web App name | `croesus-spa` | Fixed convention in this contract | not used | not used | `spaAppName` | `vars.SPA_APP_NAME` |
 | API App Service / Web App name | `croesus-api` | Fixed convention in this contract | not used | not used | `apiAppName` | `vars.API_APP_NAME` |
@@ -43,6 +43,9 @@ Each row below names one value, where it is defined, and every component that re
 | Tier 2 replay UI toggle | `VITE_ENABLE_REPLAY_DEMO` | Fixed convention in this contract, default `false` | `VITE_ENABLE_REPLAY_DEMO` | not used | not used | `vars.VITE_ENABLE_REPLAY_DEMO` |
 | SPA Graph delegated scope | `VITE_GRAPH_SCOPE` | Fixed convention in this contract, default `User.Read` | `VITE_GRAPH_SCOPE` | not used | not used | `vars.VITE_GRAPH_SCOPE` |
 | Microsoft Graph base URL | `VITE_GRAPH_BASE_URL` | Fixed convention in this contract, optional, default `https://graph.microsoft.com/v1.0` | `VITE_GRAPH_BASE_URL` | not used | not used | `vars.VITE_GRAPH_BASE_URL` |
+
+> [!NOTE]
+> The active scope-enforcement path is the `[RequiredScope("access_as_user")]` attribute on the API controllers ([../api/Controllers/MeController.cs](../api/Controllers/MeController.cs) and [../api/Controllers/ReplayController.cs](../api/Controllers/ReplayController.cs)), which rejects a token that lacks the `access_as_user` scope with `403`. The `AzureAd:Scopes` app setting in the table above is not read by the API code and is not the mechanism that enforces the scope; treat it as configuration metadata, not the control.
 
 ## Deploy identity values
 

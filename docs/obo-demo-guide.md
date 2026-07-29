@@ -2,7 +2,7 @@
 title: Croesus OBO Demo Guide
 description: Provision, deploy, exercise, and read the evidence for the Croesus mock SaaS On-Behalf-Of flow demo without referencing internal research notes
 author: Croesus Demo Team
-ms.date: 2026-06-29
+ms.date: 2026-07-28
 ms.topic: how-to
 keywords:
   - obo
@@ -129,8 +129,8 @@ The script-based negative tests are gated in CI, and you can run them on demand:
 
 Two checks matter:
 
-* A token whose audience is Microsoft Graph, presented to the API, returns `401`.
-* The API-audience token (token A), presented directly to Microsoft Graph, returns `401`.
+* A token whose audience is Microsoft Graph, presented to the API, returns `401` from the local audience middleware.
+* The API-audience token (token A), presented to Microsoft Graph, is expected to return `401` by Graph's audience validation.
 
 If both rejections occur, no single token works against both resources, which is the behavioral signature of a real OBO.
 
@@ -139,10 +139,10 @@ If both rejections occur, no single token works against both resources, which is
 The API logs decoded claims only. It never logs raw tokens. For each request it records three things:
 
 * Leg 1: the inbound token claims, `aud`, `scp`, `appid`, `oid`, and `jti`, where `aud` equals the API.
-* The OBO request shape: the `jwt-bearer` grant, the `on_behalf_of` parameter, and the certificate thumbprint.
-* Leg 2: the Graph token claims, where `aud` equals Microsoft Graph and the `jti` and `iat` differ from leg 1.
+* The OBO request shape: the `jwt-bearer` grant, the `on_behalf_of` parameter, and the credential source and name (the credential `SourceType` and the Key Vault certificate name), never a thumbprint or the credential itself.
+* Leg 2: derived from the MSAL result rather than from decoding token B. It records `aud == Microsoft Graph` (true by construction of the OBO acquisition), the granted scopes, the token source, the OBO correlation id, and the expiry.
 
-The distinct `aud` values and distinct `jti` values across the two legs are the proof. Token B is a new issuance, not a relay of token A.
+Leg 1 is audienced to the API while leg 2 is acquired fresh for Microsoft Graph. Because the API does not crack token B, distinct issuance is shown through the OBO correlation id, token source, and expiry rather than a decoded `jti` or `iat`. Token B is a new acquisition, not a relay of token A.
 
 ## Step 6: Correlate the Entra sign-in logs
 
@@ -262,4 +262,4 @@ This demo registers both applications as single-tenant (`signInAudience = AzureA
 
 ## What you have proven
 
-After these steps you have a running OBO flow, two distinct tokens with distinct audiences and `jti` values, enforced audience rejection in both directions, and two independent evidence trails: structured claim logs and correlated sign-in logs. The next document maps this evidence to the specific questions Desjardins asked the vendor.
+After these steps you have a running OBO flow: two tokens with distinct audiences (leg 1 for the API, leg 2 acquired fresh for Microsoft Graph), enforced audience rejection in both directions, and two independent evidence trails: structured claim logs and correlated sign-in logs. The claim logs evidence leg 2's distinct issuance through the OBO correlation id, token source, and expiry rather than a decoded `jti`. The next document maps this evidence to the specific questions Desjardins asked the vendor.

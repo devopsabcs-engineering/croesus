@@ -3,6 +3,8 @@
 
 Mathieu Santerre asked why Croesus must call Microsoft Entra's `/token` endpoint when Croesus says it does not use On-Behalf-Of (OBO) and has not implemented refresh. The evidence changes our position: `/token` is also the normal endpoint for redeeming an authorization code. Olivier's authorization-code-with-PKCE explanation is protocol-plausible and fits the supplied app registrations better than the repository's OBO mock, but it remains unverified until one correlated transaction identifies the grant and the token later sent to Microsoft Graph.
 
+A second, decisive finding tightens the analysis. The supplied registrations declare their redirect URIs under the Microsoft Entra `spa` (public-client) platform node only, with no client secret or certificate. Microsoft Entra rejects a genuine server-side (no-`Origin`) authorization-code redemption for a `spa`-platform redirect URI with `AADSTS9002327` ("Tokens issued for the 'Single-Page Application' client-type may only be redeemed via cross-origin requests"). Therefore the registrations are correct for a browser-driven redemption, but are not correct for a literal server-side `/token` redemption. This does not disprove Olivier; it means "mandatory server-side `/token` call" and a `spa`-platform registration cannot both be literally true unless the redemption actually carries a browser `Origin` header.
+
 ## Task Implementation Requests
 
 * Reconstruct Mathieu's question and Olivier's response with source references and the related image
@@ -31,6 +33,7 @@ Our previous assumption was too strong. The repository does not prove that Croes
 3. Keep Desjardins Conditional Access unchanged while one correlated successful and failing transaction is captured.
 4. Do not allowlist Croesus IPs, add a Desjardins proxy, or mandate OBO before the transaction is classified.
 5. Describe this repository as an OBO reference architecture and negative-control lab, not a demonstrated reconstruction of Croesus production.
+6. Raise the registration-platform question directly: the exported apps are `spa`-platform public clients, so either the code is redeemed from the browser (with an `Origin` header) or, if a real backend redeems it server-side, the registration should be a `web`-platform confidential client with a certificate credential. The single `Origin`-header fact in one captured `/token` request or sign-in log resolves this.
 
 An authorization-code redemption at `/token` can trigger or surface Conditional Access behavior similar to an OBO token request. The evaluations are not necessarily identical because grant type, client type, application, resource, network location, device and session context, and claims-challenge handling can differ.
 
@@ -107,6 +110,52 @@ Endpoint URL, AWS source IP, non-interactive classification, or `1008` cannot in
 
 assets/dev-dev.txt:18-92, assets/dev-prod.txt:18-91, and assets/prod-prod.txt:18-91 show single-tenant SPA registrations, delegated Graph `User.Read`, no exposed API scopes, no app roles, and no credentials. These objects cannot be the confidential OBO middle tier modeled by this repository. They fit direct delegated Graph acquisition better, but do not prove verifier ownership or exclude another backend registration.
 
+The redirect URIs are the strongest single tell. Both registrations carry their redirect URIs under the `spa` platform node only (`web.redirectUris` and `publicClient.redirectUris` are empty), yet the URIs point at server-rendered surfaces: `https://gpd-central.desjardins.com/CentralWebApp/LogonSso.aspx` (ASP.NET Web Forms) and `https://spsfondation.dev.desjardins.com/affwebservices/tools/oidc-tool.html` (CA SiteMinder / Broadcom Single Sign-On). A server-rendered relying party is a confidential client by nature, but the registration declares a public SPA client.
+
+## Registration Correctness for the Intended Flow
+
+This is the direct answer to whether the Desjardins registrations are correct for Olivier's stated flow (authorization code with PKCE, no OBO, mandatory server-side `/token` call).
+
+### Decisive Platform-Node Behavior
+
+Microsoft Entra changes token-endpoint behavior based on the platform node that owns the redirect URI. For a `spa` redirect URI, redemption at `/oauth2/v2.0/token` must be a cross-origin browser request carrying an `Origin` header; a no-`Origin` server call is rejected. See [authorization-code flow](https://learn.microsoft.com/entra/identity-platform/v2-oauth2-auth-code-flow) and the error text at [AADSTS9002327](https://login.microsoftonline.com/error?code=9002327):
+
+> Tokens issued for the 'Single-Page Application' client-type may only be redeemed via cross-origin requests.
+
+Symmetrically, Entra blocks client credentials whenever an `Origin` header is present, and rejects a public client that presents a secret or certificate with `AADSTS700025`. A `spa`-registered app also receives a fixed, non-extendable 24-hour refresh-token lifetime (`AADSTS700084`), unlike `web`/native clients.
+
+### Verdict
+
+| Aspect | Exported registration | Correct for literal server-side (no-`Origin`) redemption? |
+|--------|-----------------------|-----------------------------------------------------------|
+| Platform node | `spa` only | No — should be `web` |
+| Client type | Public (no secret/cert) | No — confidential needs a credential |
+| Token-endpoint contract | Requires `Origin`/CORS; no-`Origin` server call rejected (`AADSTS9002327`) | No — a server call has no `Origin` |
+| Refresh-token lifetime | Fixed 24h (SPA cap) | Atypical for a server/daemon posture |
+| Exposed API / app roles | None | N/A (not a resource server) |
+| Graph access | Delegated `User.Read` only | Consistent with sign-in only |
+| OBO enablement | None possible | N/A (vendor says no OBO) |
+
+The registration is a correct, coherent public single-page-application client. It is not correct for a literal server-side confidential `/token` redemption. Two internally consistent readings remain, and only a captured request separates them:
+
+* Interpretation A (registration correct, wording imprecise): the `.aspx` / `oidc-tool.html` page runs MSAL.js in the browser, redeems the code with an `Origin` header, and "server-side" describes the hosting web app rather than the token call. The SPA platform, empty credentials, and `User.Read`-only are all consistent with this.
+* Interpretation B (registration is a mismatch): a Croesus AWS backend redeems the code server-to-server with no `Origin`. Against a `spa`-only registration this fails with `AADSTS9002327` unless the backend spoofs an `Origin` header, and it cannot present a credential (public client, `AADSTS700025`). If a real backend must redeem, the correct fix is a `web`-platform registration with a certificate credential.
+
+What is provable from the exports: the apps are `spa`-platform public clients with no credential, no exposed API, and delegated `User.Read` only, so they cannot service a genuine no-`Origin` server redemption and cannot enable OBO. What is not provable without a captured `/token` request or sign-in-log row: whether the real redemption carries an `Origin` header. That one fact is decisive.
+
+## Explaining the 1008 Replay-Token Evidence
+
+The Microsoft escalation cited `Unbound (statusCode 1008)` as replay evidence. This overstates the signal.
+
+* `1008` means "the request is unbound because the client isn't integrated with the platform broker, such as Windows Account Manager (WAM)." It is a device/session-binding classification, not proof that an access token was stolen and replayed. See [Token Protection deployment guide](https://learn.microsoft.com/entra/identity/conditional-access/deployment-guide-token-protection-windows).
+* Token Protection "supports native applications only. Browser-based applications are not supported," and it protects Exchange Online, SharePoint Online, and Teams (plus Azure Virtual Desktop / Windows 365 on Windows) — not Microsoft Graph. See [Token Protection concept](https://learn.microsoft.com/entra/identity/conditional-access/concept-token-protection).
+* Consequences for this case: a browser/SPA sign-in that later reaches Microsoft Graph `User.Read` is out of Token Protection scope, so an `Unbound / 1008` line against it is expected and benign, not an indicator of compromise. Any headless server context (an AWS backend, or a non-broker client) is inherently "unbound" because it has no PRT and is not WAM-integrated; that unbound status is a property of the client type, not evidence of what token it presented.
+* Correct framing for Mathieu and Olivier: `1008` tells us the sign-in was not device-broker bound. It does not tell us the grant type, whether a token was reused, or whether the flow was OBO. It is consistent with, but does not prove, a server-side call. To move from "unbound" to "replay" we need token-continuity evidence (the same bearer fingerprint crossing a trust boundary without a new issuance), which `1008` alone does not supply.
+
+### Why the Mock App Cannot Currently Reproduce a Real 1008
+
+The repository lab forwards a Graph bearer token to Graph (bearer relay). Because Token Protection does not apply to browser clients or to Graph, that motion cannot emit `1008`. A genuine `1008` line is only reproducible by pointing a non-broker client at a Token-Protection-covered resource (Exchange Online / SharePoint Online / Teams) under a report-only Token Protection Conditional Access policy. The lab reproduces the replay shape and the audience-rejection outcome, not the literal `1008` telemetry.
+
 ### Mock Architecture
 
 * spa/src/getApiToken.ts:14-30 acquires an API token through MSAL.
@@ -136,6 +185,10 @@ All seven focused .NET tests passed during delegated research. They use syntheti
 | Tier 2 status proves binding state | `200`, `401`, and `403` have several possible causes |
 | Telemetry proves fresh token-B `jti`/`iat` and audience | api/Controllers/MeController.cs:99-108 does not decode token B |
 | Telemetry logs a certificate thumbprint | api/Controllers/MeController.cs:90-97 logs source and optional name only |
+| The registrations support a server-side `/token` call as stated | They are `spa`-platform public clients; a no-`Origin` server redemption is rejected with `AADSTS9002327` |
+| A public SPA client can present a secret for server redemption | A public client presenting a credential is rejected with `AADSTS700025`; server redemption needs a `web`-platform confidential client |
+| `1008` proves token replay | `1008` means the client is not WAM/broker-integrated (unbound); it does not identify the grant or prove reuse |
+| The lab can reproduce the customer's `1008` line | Token Protection is native-app-only and excludes Graph; the lab reproduces the replay shape, not `1008` |
 
 `Unbound (1008)` is sign-in-session binding status. The [status schema](https://learn.microsoft.com/graph/api/resources/tokenprotectionstatusdetails?view=graph-rest-beta) does not define it as proof of access-token replay. Token Protection also has [client and resource support limits](https://learn.microsoft.com/entra/identity/conditional-access/concept-token-protection#overview).
 
@@ -195,7 +248,9 @@ Policy outcome and protocol validity are separate. Calling this configuration-on
 >
 > The three registrations we have are SPA clients with delegated Graph `User.Read`, no exposed Croesus API scope, and no secret or certificate. That fits Olivier's stated grant family better than our OBO mock, but does not prove that the AWS component is the legitimate redeemer or that no token is relayed later.
 >
-> Yes, authorization-code redemption at `/token` can be subject to Conditional Access and can create non-interactive behavior similar to OBO. We should not say the evaluations are identical because the grant, client type, application, resource, source IP, and device/session context can differ. `Unbound (1008)` describes session binding; it does not by itself prove access-token replay.
+> There is one important wrinkle. Those registrations declare their redirect URIs under the `spa` (public client) platform. Microsoft Entra only lets a `spa` authorization code be redeemed by a cross-origin browser request that carries an `Origin` header, and rejects a plain server-side redemption with `AADSTS9002327`. So a literal "mandatory server-side `/token` call" and a `spa` registration cannot both be exactly true. Either the redemption happens in the browser (registration is correct, "server-side" is loose wording), or a real backend redeems it and the registration should instead be a `web` confidential client with a certificate. This is not an accusation; it is the one point we should clarify with a single captured request.
+>
+> Yes, authorization-code redemption at `/token` can be subject to Conditional Access and can create non-interactive behavior similar to OBO. We should not say the evaluations are identical because the grant, client type, application, resource, source IP, and device/session context can differ. `Unbound (1008)` describes session binding — specifically that the client is not integrated with the platform broker (WAM). Token Protection is native-app-only and does not cover Microsoft Graph, so an unbound/`1008` line against a browser-to-Graph flow is expected and does not by itself prove access-token replay.
 >
 > Our revised position should be to accept authorization code plus PKCE as the leading explanation and verify it with one correlated nonproduction trace before changing policy or architecture. We should not allowlist Croesus IPs, add a proxy, or require OBO until that trace identifies the grant, registered client and redirect, and token actually sent to Graph.
 
@@ -204,6 +259,8 @@ Policy outcome and protocol validity are separate. Calling this configuration-on
 > Thank you. Authorization code plus PKCE is a valid reason for a server-side call to the Microsoft Entra `/token` endpoint and is distinct from OBO. To reconcile this with the non-interactive sign-in and Conditional Access result, we propose one successful and one failing correlated nonproduction transaction, with secrets and raw tokens removed.
 >
 > For `/authorize`, please retain timestamp, correlation ID, `client_id`, `response_type`, redirect URI, scopes, `code_challenge_method`, and a challenge fingerprint. For `/token`, please retain endpoint, source component, `client_id`, grant type, redirect URI, scopes, client-authentication method, and only presence plus stable hashes for `code`, `code_verifier`, `refresh_token`, `assertion`, and client credentials. Please identify the app-registration platform used by AWS and the library method constructing the request.
+>
+> One specific point will save a round trip. Your app registrations declare their redirect URIs under the `spa` platform. Microsoft Entra only redeems a `spa` authorization code from a cross-origin browser request with an `Origin` header, and returns `AADSTS9002327` for a plain server-side redemption. Could you confirm whether the `/token` POST is issued from the browser (with an `Origin` header) or from the AWS backend server-to-server? If it is genuinely server-side, the supported registration is a `web`-platform confidential client with a certificate credential rather than a `spa` public client. The presence or absence of the `Origin` header on one request answers this.
 >
 > For the token returned by `/token` and the token sent to Graph, please provide separate SHA-256 fingerprints and, where safely available, `iss`, `aud`, `azp`/`appid`, `scp`/`roles`, `iat`, `exp`, `uti`/`jti`, and `cnf` presence. Include the Graph URL, HTTP result, `request-id`, and `client-request-id`. Do not send codes, verifiers, tokens, secrets, assertions, cookies, or private keys.
 >
@@ -223,6 +280,15 @@ Policy outcome and protocol validity are separate. Calling this configuration-on
 8. Add a `MeController` success-path test with mocked token acquisition and Graph, avoiding claims about unavailable token-B fields.
 9. Rebuild the replay-lab SPA with `VITE_ENABLE_REPLAY_DEMO=true`; enabling only the API leaves the control absent.
 10. Filter evidence by immutable app ID, persist timestamped query artifacts, and keep correlation joins labeled best-effort.
+
+### Mock-App Tests to Support the Revised Theories
+
+The current lab models only OBO (api/Controllers/MeController.cs) and bearer replay (api/Controllers/ReplayController.cs). Neither models the `spa`-versus-`web` redemption distinction that the Desjardins registrations actually turn on. Add:
+
+11. Static registration-shape assertions (CI-friendly, no Entra): parse assets/dev-dev.txt, assets/dev-prod.txt, and assets/prod-prod.txt and assert `spa.redirectUris` is non-empty while `web.redirectUris`, `keyCredentials`, `passwordCredentials`, `api.oauth2PermissionScopes`, and `appRoles` are empty. This encodes "public SPA client, OBO structurally impossible" as a regression guard.
+12. Registration-correctness assertion: assert that any redirect URI ending in `.aspx` or containing `affwebservices` is flagged when it appears under the `spa` node, documenting the server-rendered-page-under-SPA-platform mismatch.
+13. Optional live/integration tests (gated, opt-in, real Entra apps): (a) `spa` redirect URI + no-`Origin` server POST of `code`+`code_verifier` asserts `AADSTS9002327`; (b) same app with an `Origin` header asserts `200`; (c) `web` app + certificate + no-`Origin` server POST asserts `200`; (d) public app presenting a `client_secret` asserts `AADSTS700025`. These prove SPA-vs-web redemption behavior end to end.
+14. Documentation-level Token Protection assertion: record in tests/docs that a browser/SPA-to-Graph flow is out of Token Protection scope, so an observed `1008` is expected and is not replay evidence, preventing the lab from re-introducing the `1008`-proves-replay overclaim.
 
 Researcher mode did not modify production, test, workflow, or customer-source files.
 
@@ -256,9 +322,12 @@ Researcher mode did not modify production, test, workflow, or customer-source fi
 * .copilot-tracking/research/subagents/2026-07-28/repository-customer-evidence-research.md
 * .copilot-tracking/research/subagents/2026-07-28/authoritative-token-semantics-research.md
 * .copilot-tracking/research/subagents/2026-07-28/response-alternatives-analysis.md
+* .copilot-tracking/research/subagents/2026-07-28/spa-platform-token-redemption-and-registration-correctness.md
 
 ## Remaining Evidence Gaps
 
+* One captured `/token` request (or sign-in-log row) showing whether an `Origin` header is present — the single decisive fact separating browser redemption from server redemption
+* Whether a separate `web`-platform confidential registration exists that the AWS backend actually uses (not present in the three exports)
 * Redacted Croesus `/authorize` and `/token` requests
 * The component and registration holding the verifier and redeeming the code
 * Complete app and service-principal inventory

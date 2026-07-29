@@ -44,6 +44,12 @@ jobs:
           VITE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
           VITE_API_SCOPE: ${{ vars.API_SCOPE }}
           VITE_API_BASE_URL: ${{ vars.API_BASE_URL }}
+          # Client-side gate for the Tier 2a server-side replay control. Mirrors
+          # the replay-lab job's `if: vars.ENABLE_REPLAY_LAB == 'true'` gate so the
+          # wrong-vs-right control renders in the deployed SPA only when the lab is
+          # enabled. Enabling only the API leaves the control absent (backlog #9).
+          # App.tsx gates on the exact string "true".
+          VITE_ENABLE_REPLAY_DEMO: ${{ vars.ENABLE_REPLAY_LAB }}
         run: |
           npm ci
           npm run build
@@ -136,6 +142,8 @@ jobs:
       EVIDENCE_FILE: obo-evidence.md
     steps:
       - uses: actions/checkout@v4
+      - name: Stamp evidence run (UTC)
+        run: echo "EVIDENCE_STAMP=$(date -u +%Y%m%dT%H%M%SZ)" >> "$GITHUB_ENV"
       - name: Azure login (OIDC, no stored secret)
         uses: azure/login@v2
         with:
@@ -166,13 +174,23 @@ jobs:
           WORKSPACE_ID: ${{ vars.LOG_ANALYTICS_WORKSPACE_ID }}
         run: |
           set -euo pipefail
-          query='AADNonInteractiveUserSignInLogs
+          # Filter by the immutable API application (client) id rather than a
+          # display name. Microsoft Graph's immutable appId is the well-known
+          # 00000003-0000-0000-c000-000000000000; the API's appId is a repo
+          # variable. The correlation join is best-effort: it corroborates two
+          # distinct sign-in legs of one session; it does NOT and cannot prove
+          # that identical bearer bytes were reused across requests.
+          api_app_id='${{ vars.API_CLIENT_ID }}'
+          graph_app_id='00000003-0000-0000-c000-000000000000'
+          query="AADNonInteractiveUserSignInLogs
           | where TimeGenerated > ago(1h)
-          | where AppDisplayName == "Croesus API" or ResourceDisplayName == "Microsoft Graph"
-          | project TimeGenerated, CorrelationId, AppDisplayName, ResourceDisplayName, UserPrincipalName, ResourceIdentity, Status
-          | sort by TimeGenerated asc'
+          | where AppId == '${api_app_id}' or ResourceIdentity == '${graph_app_id}'
+          | project TimeGenerated, CorrelationId, AppId, AppDisplayName, ResourceIdentity, ResourceDisplayName, UserPrincipalName, Status
+          | sort by TimeGenerated asc"
           {
             echo "### OBO two-leg correlation (non-interactive sign-in logs)"
+            echo ""
+            echo "_Filtered by immutable app id \`${api_app_id}\` (API) / \`${graph_app_id}\` (Microsoft Graph). Correlation is best-effort: it shows two distinct sign-in legs, not identical bearer-token bytes reused across requests._"
             echo ""
           } | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
           if az monitor log-analytics query \
@@ -203,7 +221,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: obo-evidence
+          name: obo-evidence-${{ env.EVIDENCE_STAMP }}
           path: ${{ env.EVIDENCE_FILE }}
           if-no-files-found: ignore
 
@@ -228,6 +246,8 @@ jobs:
       EVIDENCE_FILE: tier2-replay-evidence.md
     steps:
       - uses: actions/checkout@v4
+      - name: Stamp evidence run (UTC)
+        run: echo "EVIDENCE_STAMP=$(date -u +%Y%m%dT%H%M%SZ)" >> "$GITHUB_ENV"
       - name: Azure login (OIDC, no stored secret)
         uses: azure/login@v2
         with:
@@ -263,7 +283,7 @@ jobs:
           correlation_query='let interactive =
               SigninLogs
               | where TimeGenerated > ago(1d)
-              | where AppDisplayName == "Croesus GPD Central SPA (mock)"
+              | where AppId == "${{ vars.SPA_CLIENT_ID }}"
               | project L1_Time=TimeGenerated, CorrelationId, UserPrincipalName,
                         L1_IP=IPAddress, L1_Resource=ResourceDisplayName;
           let secondLeg =
@@ -296,6 +316,8 @@ jobs:
             echo ""
             echo "### Tier 2a two-leg correlation (interactive SPA <-> non-interactive OBO leg)"
             echo ""
+            echo "_Interactive leg filtered by the immutable SPA app id \`${{ vars.SPA_CLIENT_ID }}\`. The CorrelationId + UserPrincipalName join is best-effort: it corroborates two distinct sign-in legs of one session, but it does NOT and cannot prove that identical bearer-token bytes were reused across requests._"
+            echo ""
           } | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
           if az monitor log-analytics query \
               --workspace "$WORKSPACE_ID" \
@@ -312,6 +334,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: tier2-replay-evidence
+          name: tier2-replay-evidence-${{ env.EVIDENCE_STAMP }}
           path: ${{ env.EVIDENCE_FILE }}
           if-no-files-found: ignore

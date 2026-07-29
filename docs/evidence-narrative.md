@@ -2,7 +2,7 @@
 title: Croesus OBO Evidence Narrative
 description: Maps the Desjardins escalation-packet questions to the concrete evidence the mock OBO demo produces and explains why audience-binding is the headline proof
 author: Croesus Demo Team
-ms.date: 2026-06-29
+ms.date: 2026-07-28
 ms.topic: concept
 keywords:
   - obo
@@ -19,22 +19,22 @@ The escalation packet in [../assets/croesus-escalation-packet.md](../assets/croe
 
 ## The headline proof: audience-binding
 
-A real OBO produces two different tokens. The middle tier receives a token whose audience is the API, then exchanges it for a brand-new token whose audience is Microsoft Graph. The second token carries a fresh `jti` and `iat`. A replay produces one token used twice, with one audience and one `jti`.
+A real OBO produces two different tokens. The middle tier receives a token whose audience is the API, then exchanges it for a brand-new token whose audience is Microsoft Graph. At the protocol level the second token carries a fresh `jti` and `iat`; a replay reuses one token, with one audience and one `jti`. The demo does not decode token B, so it evidences the distinct issuance through the OBO correlation id, token source, and expiry rather than by reading token B's `jti`.
 
 The demo makes that boundary observable in three reinforcing ways:
 
-* The Application Insights claim logs show leg 1 with `aud == API` and leg 2 with `aud == Microsoft Graph` and a different `jti`.
-* The negative tests show that neither token works against the other resource: a Graph-audience token is rejected by the API with `401`, and the API-audience token is rejected by Graph with `401`.
+* The Application Insights claim logs show leg 1 with `aud == API`. Leg 2 records `aud == Microsoft Graph` by construction (the API does not decode token B), and distinct issuance is shown through the OBO correlation id, token source, and expiry rather than a decoded `jti`.
+* The negative tests show that neither token is honored across the boundary. A Graph-audience token presented to the API is rejected locally with `401` by the audience middleware. The reverse direction, the API-audience token sent to Graph, is expected to return `401` by audience validation; that outcome is asserted structurally from how Entra audiences tokens rather than proven by a captured live Graph call in this document.
 * The Entra non-interactive sign-in logs show two correlated legs sharing a `CorrelationId` but naming two different resources.
 
-This is the strongest possible evidence because it is intrinsic to the protocol. Two distinct audiences with two distinct token identifiers cannot be produced by reusing a single token. The negative tests close the loop by proving the boundary is enforced rather than incidental.
+This is strong evidence because it is intrinsic to the protocol: a single reused token cannot present two distinct audiences, and the middle tier obtains token B through a fresh OBO acquisition rather than forwarding token A. The negative tests close the loop by proving the boundary is enforced rather than incidental.
 
 ## Question-by-question mapping
 
 | Question | What the demo shows | Where to see it |
 | --- | --- | --- |
-| Q1: Is the second request an OBO exchange or a server-side replay? | Two distinct tokens with distinct audiences and `jti` values, issued by the OBO exchange. The gated Tier 2a control shows the contrast directly: one token forwarded from server-side context, with no fresh issuance. | App Insights leg 1 and leg 2 claim logs, plus the distinct `ReplayAttempt` event; [obo-demo-guide.md](obo-demo-guide.md) steps 5 and 7. |
-| Q2: Is the backend a confidential client, and which app and scope? | The API authenticates as a confidential client using a certificate in Key Vault, exposes `access_as_user`, and is pre-authorized for the SPA. | Provisioning output and [configuration-contract.md](configuration-contract.md); the OBO request shape in the App Insights log records the certificate thumbprint. |
+| Q1: Is the second request an OBO exchange or a server-side replay? | Two tokens with distinct audiences, issued by the OBO exchange: token A is audienced to the API and token B is acquired fresh for Microsoft Graph. The gated Tier 2a control shows the contrast directly: one token forwarded from server-side context, with no fresh issuance. | App Insights leg 1 and leg 2 claim logs, plus the distinct `ReplayAttempt` event; [obo-demo-guide.md](obo-demo-guide.md) steps 5 and 7. |
+| Q2: Is the backend a confidential client, and which app and scope? | The API authenticates as a confidential client using a certificate in Key Vault, exposes `access_as_user`, and is pre-authorized for the SPA. | Provisioning output and [configuration-contract.md](configuration-contract.md); the OBO request shape in the App Insights log records the credential source and name (the credential `SourceType` and the Key Vault certificate name), not a thumbprint. |
 | Q3: What audience does the second token carry? | Leg 2 targets Microsoft Graph through a freshly issued token, distinct from the API-audience token of leg 1. | App Insights leg 2 claim log (`aud == Microsoft Graph`); KQL row with `ResourceDisplayName == "Microsoft Graph"`. |
 | Q4: What are the backend egress IP ranges? | Out of scope for the demo. The demo proves the flow shape; egress ranges remain a vendor-supplied fact for the Conditional Access exception. | Vendor input; tracked in the escalation packet, not reproduced here. |
 | Q5: Does the backend rely on tenant-specific device-compliance claims? | The corrected flow depends on the OBO exchange, not on relaying device-compliance claims. The single-tenant design keeps every leg intra-tenant. | Architecture in [obo-demo-guide.md](obo-demo-guide.md); tenancy section of the same guide. |
@@ -48,7 +48,19 @@ Token Protection token binding, and therefore the 1008 "unbound" signal, applies
 
 Tier 2b reproduces the customer's exact telemetry on the terms the platform supports. It stands up a report-only Conditional Access Token Protection policy (a Microsoft Entra ID P1 capability) scoped to a native mobile-and-desktop client reaching Exchange Online, then reads the resulting `signInSessionStatusCode == "1008"` from the non-interactive sign-in logs (Query 4 in [../scripts/evidence-kql.kusto](../scripts/evidence-kql.kusto)). Report-only mode records the binding evaluation without blocking anyone, so the exhibit is safe to run and trivial to reverse. This is the real 1008, obtained on a supported resource, and it stays clearly separate from the OBO proof.
 
-The audience boundary carries the argument on its own. Two distinct audiences, two distinct `jti` values, and enforced rejection in both directions demonstrate a standards-compliant OBO regardless of whether any Token Protection signal is present. Tier 2a adds the mirror image: a gated server-side replay that forwards a real Graph token from the middle tier and emits a distinct `ReplayAttempt` event, reproducing the replay shape the customer's logs attribute to the vendor backend so the wrong and right flows sit side by side.
+The audience boundary carries the argument on its own. Two distinct audiences and enforced rejection in both directions demonstrate a standards-compliant OBO regardless of whether any Token Protection signal is present. Tier 2a adds the mirror image: a gated server-side replay that forwards a real Graph token from the middle tier and emits a distinct `ReplayAttempt` event, reproducing the replay shape the customer's logs attribute to the vendor backend so the wrong and right flows sit side by side.
+
+## Registration correctness
+
+The three exported registrations (`dev-dev`, `dev-prod`, `prod-prod`) declare their redirect URIs under the Microsoft Entra `spa` (public-client) platform node, with no client secret, no certificate, and no exposed API scope. That shape is correct for a browser-driven authorization-code redemption, where the browser redeems the code cross-origin with an `Origin` header. It is not correct for a literal server-side (no-`Origin`) redemption.
+
+Microsoft Entra enforces this at the token endpoint. A `spa` authorization code may only be redeemed by a cross-origin browser request; a plain server-side redemption is rejected:
+
+> Tokens issued for the 'Single-Page Application' client-type may only be redeemed via cross-origin requests. (`AADSTS9002327`)
+
+So "mandatory server-side `/token` call" and a `spa`-only registration cannot both be literally true unless the redemption carries a browser `Origin` header. If a real backend must redeem the code server to server, the supported registration is a `web`-platform confidential client with a certificate credential, not a `spa` public client. The decisive artifact is a single captured `/token` request showing whether an `Origin` header is present; that one fact separates browser redemption from server redemption.
+
+One guard belongs alongside this verdict: `1008` is out of Token Protection scope for a browser-to-Graph flow and is not replay evidence. Token Protection supports native applications only and does not cover Microsoft Graph, so an `Unbound (1008)` line against a browser sign-in that later reaches Graph is expected and benign. Keep that statement in view so the analysis does not drift back to treating `1008` as proof of token replay.
 
 ## Reversibility and residual token validity
 

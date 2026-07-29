@@ -6,10 +6,18 @@
 // the API's App Insights claim logging of both token legs.
 //
 // Run each query block on its own (Log Analytics executes one query at a time).
-// The AppDisplayName / ResourceDisplayName literals below match the provisioned
-// mock registrations, "Croesus GPD Central SPA (mock)" and "Croesus GPD Central
-// API (mock)". Change them only if you overrode SPA_DISPLAY_NAME /
-// API_DISPLAY_NAME when running scripts/provision-app-registrations.sh.
+// Filter by IMMUTABLE application ids, not display names: display names can be
+// renamed and are not identity. Substitute the two client-id GUIDs captured from
+// scripts/provision-app-registrations.sh output before running:
+//   <SPA_CLIENT_ID> -> spa_client_id (interactive SPA client)
+//   <API_CLIENT_ID> -> api_client_id (middle-tier API client of the OBO leg)
+// Microsoft Graph's immutable appId is the well-known, cross-tenant constant
+// 00000003-0000-0000-c000-000000000000 (used below for the Graph resource leg).
+//
+// These sign-in-log queries are CORROBORATING and BEST-EFFORT: they show two
+// distinct sign-in legs of one session (distinct clients, resources, audiences).
+// They do NOT and cannot prove that identical bearer-token bytes were reused
+// across requests — bearer-byte continuity is not recorded in sign-in logs.
 //
 // PRIMARY Tier 2a evidence is NOT in these sign-in logs: the API emits a
 // distinct App Insights custom event named "ReplayAttempt" for each gated
@@ -25,8 +33,8 @@
 // =============================================================================
 SigninLogs
 | where TimeGenerated > ago(1h)
-| where AppDisplayName == "Croesus GPD Central SPA (mock)"
-| project TimeGenerated, CorrelationId, AppDisplayName, ResourceDisplayName, UserPrincipalName, Status
+| where AppId == "<SPA_CLIENT_ID>"   // immutable SPA client appId
+| project TimeGenerated, CorrelationId, AppId, AppDisplayName, ResourceDisplayName, UserPrincipalName, Status
 | sort by TimeGenerated asc
 
 // =============================================================================
@@ -40,9 +48,10 @@ SigninLogs
 // =============================================================================
 AADNonInteractiveUserSignInLogs
 | where TimeGenerated > ago(1h)
-| where AppDisplayName == "Croesus GPD Central API (mock)" or ResourceDisplayName == "Microsoft Graph"
-| project TimeGenerated, CorrelationId, AppDisplayName, ResourceDisplayName,
-          UserPrincipalName, ResourceIdentity, Status
+| where AppId == "<API_CLIENT_ID>"   // immutable API client appId (OBO middle tier)
+    or ResourceIdentity == "00000003-0000-0000-c000-000000000000"   // Microsoft Graph well-known appId
+| project TimeGenerated, CorrelationId, AppId, AppDisplayName, ResourceIdentity, ResourceDisplayName,
+          UserPrincipalName, Status
 | sort by TimeGenerated asc
 
 // =============================================================================
@@ -90,14 +99,17 @@ AADNonInteractiveUserSignInLogs
 // AADNonInteractiveUserSignInLogs (leg 2, non-interactive) on CorrelationId +
 // UserPrincipalName, so the two legs of one session sit side by side: distinct
 // resources, distinct IPs, and (when a Token Protection policy is in scope) the
-// leg-2 binding status. CorrelationId is best-effort (derived from
-// client-passed parameters), so the join also pins UserPrincipalName; widen the
-// time window or add UniqueTokenIdentifier if a session does not line up.
+// leg-2 binding status. This correlation is BEST-EFFORT ONLY: CorrelationId is
+// derived from client-passed parameters (so the join also pins
+// UserPrincipalName), and the join corroborates two distinct sign-in legs of one
+// session — it does NOT and cannot prove that identical bearer-token bytes were
+// reused across requests. Widen the time window or add UniqueTokenIdentifier if a
+// session does not line up.
 // =============================================================================
 let interactive =
     SigninLogs
     | where TimeGenerated > ago(1d)
-    | where AppDisplayName == "Croesus GPD Central SPA (mock)"
+    | where AppId == "<SPA_CLIENT_ID>"   // immutable SPA client appId
     | project L1_Time=TimeGenerated, CorrelationId, UserPrincipalName,
               L1_IP=IPAddress, L1_Resource=ResourceDisplayName,
               L1_UniqueTokenId=UniqueTokenIdentifier;

@@ -4,15 +4,16 @@ Analysis of the **Desjardins** "GPD Central" (Central GPD) integration with the 
 
 ## Bottom line
 
-- The **Conditional Access block is correct-by-design** (Zero Trust) — *not* a Desjardins misconfiguration.
-- The second sign-in is driven by the **vendor's server-side SaaS design**, confirmed by raw sign-in logs to be a **token replay** (Token Protection "unbound", code 1008) to Microsoft Graph — **not** a standards-compliant Entra On-Behalf-Of (OBO) flow (the registrations have no secret, certificate, or exposed API scope).
-- **Recommended path: Option B first** (escalate to Croesus for the authoritative flow definition + AWS egress IP ranges), then a **scoped Option A** internal accommodation — preferring Entra B2B "Trust compliant devices" to fix the cross-tenant root cause.
+- The **Conditional Access block is correct-by-design** (Zero Trust), not a Desjardins misconfiguration.
+- The grant behind the second, non-interactive sign-in is **not yet classified from a captured request**. Authorization code with PKCE is the leading hypothesis: the vendor states Central redeems an authorization code at Entra's `/token` endpoint, and `/token` is the normal endpoint for that redemption rather than proof of On-Behalf-Of (OBO). The three exported registrations are `spa`-platform public clients (no secret, certificate, or exposed API scope), which is consistent with browser authorization-code redemption rather than a confidential middle tier.
+- The `1008` "unbound" line means the client is **not integrated with the platform broker** (Windows Account Manager), a device- and session-binding status. It does not identify the grant or prove that an access token was replayed.
+- **Recommended path: capture one correlated transaction first** (escalate to Croesus for the authoritative flow definition and the AWS egress IP ranges) to classify the grant, then choose the minimum remediation. OBO is one option, appropriate only if a genuine middle-tier requirement is proven; it is not required for ordinary code redemption.
 
 ## Security findings
 
 | ID | Severity | Finding |
 | --- | --- | --- |
-| V1 | High (design) | Token replay ("unbound" / Token Protection 1008) from an AWS IP carries compliant-device claims; in prod it is only flagged, not blocked. Remediation: enforce a token-binding CA control. |
+| V1 | Medium (unclassified) | A non-interactive sign-in from an AWS IP records Token Protection "unbound" (code `1008`) and carries compliant-device claims; in prod it is only flagged, not blocked. `1008` is a broker-binding status, not proof of token replay, and the grant is not yet classified. Remediation: capture one correlated `/token` request to classify the grant, then enforce the minimum control that fits it. |
 | V2 | Medium | Tenant-boundary drift — a UAT/dev-named registration lives in the PROD tenant. |
 | V3 | Low | dev-dev hygiene — implicit ID-token issuance enabled + an extra SiteMinder test redirect. |
 
@@ -50,19 +51,22 @@ SigninLogs
 | project TimeGenerated, UserPrincipalName, AppDisplayName, ResourceDisplayName, IPAddress
 ```
 
+> [!NOTE]
+> This browser-context `1008` row is retained as a captured exhibit pending verification (tracked as DR-01). Token Protection supports native applications only and does not cover Microsoft Graph, so whether a browser sign-in to a custom API legitimately carries an `Unbound (1008)` binding status is a factual question under review. Read the row as a binding-status observation, not as proof of token replay.
+
 ## How to fix it properly
 
-The `1008` unbound signal means the token presented on the second hop is not bound to the originating device or platform broker. The durable fix is to stop replaying the user's token, adopt a standards On-Behalf-Of exchange, and then let Conditional Access enforce token binding.
+The `1008` "unbound" signal means the second-hop client is not integrated with the platform broker (Windows Account Manager). It is a binding status, not a classification of the grant. The durable path is to classify the grant from one captured request, then apply the minimum control that fits the confirmed flow.
 
 Recommended sequence:
 
-1. Escalate to the vendor first (Option B). Ask Croesus for the authoritative flow definition and the AWS egress IP ranges, and confirm whether the second hop is intended to be On-Behalf-Of or a server-side call.
-2. Implement standards On-Behalf-Of on the middle tier. The API registration must carry a confidential-client credential (a certificate in Key Vault), expose an `access_as_user` scope, and pre-authorize the SPA. The middle tier then mints a fresh, audience-bound Graph token (new `aud`, `jti`, and `iat`) instead of replaying the user's token. The mock API in this repository demonstrates exactly this shape.
-3. Prefer Entra B2B "Trust compliant devices" to resolve the cross-tenant root cause, so device-compliance claims flow correctly across the tenant boundary rather than being stripped and re-presented.
-4. Enforce token binding with Conditional Access. Keep the Token Protection policy in report-only until the flow is corrected, then move it to enforce so any future unbound replay is blocked rather than merely flagged.
-5. Verify with the sign-in logs. After the fix, the second hop should record `bound` (statusCode `0`) instead of `Unbound (statusCode: 1008)`.
+1. Escalate to the vendor first (Option B). Ask Croesus for the authoritative flow definition and the AWS egress IP ranges, and confirm whether the `/token` POST is a browser authorization-code redemption (with an `Origin` header) or a server-side call.
+2. Classify the grant from one correlated transaction. An `authorization_code` grant with a matching `code_verifier`, followed by Graph use of the newly returned token, supports the authorization-code explanation. An `assertion` with `requested_token_use=on_behalf_of` would establish OBO. The same bearer fingerprint crossing the boundary without a new issuance would support relay or replay.
+3. Apply the minimum remediation for the confirmed flow. If a genuine middle-tier requirement is proven, standards On-Behalf-Of is one option: the API registration carries a confidential-client credential (a certificate in Key Vault), exposes an `access_as_user` scope, and pre-authorizes the SPA so the middle tier mints a fresh, audience-bound Graph token instead of forwarding the user's token. The mock API in this repository demonstrates that shape. OBO is not required for ordinary authorization-code redemption.
+4. Prefer Entra B2B "Trust compliant devices" to resolve the cross-tenant root cause, so device-compliance claims flow correctly across the tenant boundary rather than being stripped and re-presented.
+5. Enforce token binding with Conditional Access only where it applies. Keep any Token Protection policy in report-only until the flow is classified. Token Protection is native-app-only and does not cover Microsoft Graph, so it does not bind a browser-to-Graph hop.
 
-The five pieces a compliant flow requires, all of which the replay lacks, are listed under [What a real OBO needs that the replay lacks](#what-a-real-obo-needs-that-the-replay-lacks).
+The five pieces a standards OBO requires, for the case where OBO is the confirmed fix, are listed under [What a real OBO needs that the replay lacks](#what-a-real-obo-needs-that-the-replay-lacks).
 
 ## Deliverables
 
@@ -85,7 +89,7 @@ The five pieces a compliant flow requires, all of which the replay lacks, are li
 
 ## Mock Croesus SaaS OBO demo
 
-The analysis above concluded that the three production registrations cannot perform a standards-compliant On-Behalf-Of (OBO) exchange: they hold no credential and expose no API scope, so the second sign-in is a server-side token replay to Microsoft Graph. This demo builds the corrected shape end-to-end so we can show Desjardins exactly what a real OBO looks like and how to prove it.
+The analysis above concluded that the three production registrations cannot perform a standards-compliant On-Behalf-Of (OBO) exchange: they hold no credential and expose no API scope. They are `spa`-platform public clients, consistent with browser authorization-code redemption; the grant behind the second sign-in is not yet classified from a captured request, so it is not asserted here as a replay. This demo builds the OBO shape end-to-end as a reference so we can show Desjardins what a standards OBO looks like and how to prove it, without claiming it reconstructs Croesus production.
 
 We frame the demo as the vendor would: we are the Croesus vendor providing a setup guide, and Desjardins stands up the two app registrations in their own tenant.
 
@@ -141,7 +145,7 @@ The demo runs two registrations precisely because the three real Croesus registr
 | Graph permissions | None (requests the API scope) | `User.Read` (delegated) | `User.Read` (delegated) |
 | Performs standards OBO | No (by design) | Yes (the middle tier) | No (cannot) |
 
-The decisive row is the credentialed API that exposes a scope: the mock has it, none of the three real registrations do. That single difference is why the real second hop can only be a replayed user token, while the mock mints a fresh, audience-bound token B. See [assets/app-registration-analysis-findings.md](assets/app-registration-analysis-findings.md#verified-comparison) for the full real-registration matrix.
+The decisive row is the credentialed API that exposes a scope: the mock has it, none of the three real registrations do. That single difference is why the real registrations cannot mint a fresh, audience-bound token B through a confidential OBO exchange, while the mock can. What grant the real second hop actually uses is a separate question that only a captured `/token` request classifies. See [assets/app-registration-analysis-findings.md](assets/app-registration-analysis-findings.md#verified-comparison) for the full real-registration matrix.
 
 ### Prerequisites
 
