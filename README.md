@@ -1,5 +1,12 @@
 # Croesus / GPD Central — Entra App Registration & SSO Conditional Access Analysis
 
+> [!IMPORTANT]
+> **Next step (one open item blocks final classification).** We still need **one captured `/token` request** from a successful and a failing transaction, showing whether the redemption carries an **`Origin` header**. That single fact classifies the grant: an `Origin` header means a browser authorization-code redemption (consistent with the `spa` registrations); no `Origin` header means a genuine server-side redemption, which a `spa` public client cannot service (Entra returns `AADSTS9002327`) and which would instead need a `web` confidential-client registration.
+>
+> **Who to ask:** the capture must come from **Croesus (Olivier Leblanc)**, who owns the Central backend and the `/token` call. Keep **Mathieu Santerre (Desjardins)** in the loop as the internal customer contact. Send the [Croesus escalation packet](assets/croesus-escalation-packet.md) and point to **Q7** (the `Origin`-header capture; presence indicators and SHA-256 hashes only, never raw tokens or secrets).
+>
+> **Guardrail:** until the grant is classified, do not change Conditional Access, allowlist AWS IPs, or mandate OBO.
+
 Analysis of the **Desjardins** "GPD Central" (Central GPD) integration with the **Croesus** SaaS platform. The work answers one customer question: the second, non-interactive sign-in arriving from the Croesus AWS backend — blocked by Conditional Access (CA) in non-prod — is this **expected OAuth behaviour** or a **misconfiguration**, and should the fix be **internal (Option A)** or **escalated to the vendor (Option B)**?
 
 ## Bottom line
