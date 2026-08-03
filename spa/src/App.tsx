@@ -14,6 +14,7 @@ import {
   type ServerReplayResult,
 } from "./api";
 import { EvidencePanel } from "./components/EvidencePanel";
+import { RegistrationShapePanel } from "./components/RegistrationShapePanel";
 import { ReplayAttemptPanel, ServerReplayPanel } from "./components/ReplayAttemptPanel";
 import { TokenInspectorPanel } from "./components/TokenInspectorPanel";
 
@@ -238,6 +239,8 @@ export default function App() {
       </AuthenticatedTemplate>
 
       <ContrastPanel />
+
+      <RegistrationShapePanel />
 
       <AuthenticatedTemplate>
         {replay && <ReplayAttemptPanel result={replay} />}

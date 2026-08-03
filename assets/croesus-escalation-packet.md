@@ -2,8 +2,21 @@
 
 **To:** Croesus (GPD Central / Central GPD vendor team)
 **From:** Desjardins identity / security
-**Date:** 2026-06-15
+**Date:** 2026-06-15 (updated 2026-08-03)
 **Subject:** Authoritative definition of the GPD Central server-side token flow and AWS egress ranges
+
+---
+
+## 0. Update — what we have since confirmed (read with section 1)
+
+Desjardins captured a browser trace (HAR) of a real Central sign-in by a Desjardins user. It contains **only `/oauth2/v2.0/authorize`** and **no `/oauth2/v2.0/token`**. The authorization code leaves the browser, but the redemption happens **off the user's machine**. This **corroborates your statement** that the `/token` call is made server-side from Croesus egress, and it removes the browser-redemption hypothesis for that capture.
+
+Two consequences shape this request:
+
+1. **Only Croesus can now supply the `Origin` fact.** The header exists only on your outbound request; it never reaches a Desjardins browser and is not a field in our tenant sign-in logs. **Q7** is therefore the priority ask.
+2. **A server-side redemption and a `spa`-only registration cannot both hold.** Microsoft Entra rejects a plain server-side redemption of a `spa` authorization code with `AADSTS9002327`. So either that redemption **fails** (and Central needs a **`web` confidential-client** registration), or it **succeeds** — which means the backend authenticates as a **registration we have never been shown**. That promotes **Q8** (complete registration and service-principal inventory) to equal priority with Q7.
+
+**Priority asks: Q7 and Q8.** The remaining questions stay valuable for scoping, but these two resolve the fork.
 
 ---
 
@@ -21,6 +34,8 @@ To choose the **most proportionate** internal accommodation, we need you to conf
 
 ## 2. Questions for Croesus
 
+> **Priority:** Q7 and Q8 resolve the open fork described in section 0. The others remain useful for scoping the accommodation.
+
 | # | Question | Why we need it |
 | --- | --- | --- |
 | Q1 | What is the **exact OAuth/OIDC flow** GPD Central performs after the user's interactive sign-in? Specifically, is the second, server-initiated `/token` call an **authorization-code-with-PKCE** redemption, an **On-Behalf-Of (OBO)** exchange, a **refresh-token** grant, or a **reuse/replay** of an existing token? | Determines whether any registration/credential change is needed at all, and which internal lever is proportionate. |
@@ -29,8 +44,8 @@ To choose the **most proportionate** internal accommodation, we need you to conf
 | Q4 | What are your **published AWS egress IP ranges** for the GPD Central backend (all environments)? | Needed to scope any trusted-location CA exception precisely. We have observed `3.97.32.113` and `3.99.119.124`. |
 | Q5 | Does your backend rely on the **device-compliance / "Azure AD joined" claims** carried in the user's token? Are you aware those claims are **tenant-specific** (a device compliant in our Prod tenant is not compliant in our Dev tenant)? | This cross-tenant device-compliance gap is the architectural root cause of the non-prod block. |
 | Q6 | Is your token handling compatible with **Entra Token Protection / token binding**? Would enforcing a token-binding CA control break your flow? | We intend to deny device-unbound tokens; we need to know if that affects your design. |
-| Q7 | For one **successful** and one **failing** transaction, can you share the redacted `/authorize` and `/token` requests — in particular whether the `/token` POST carries an **`Origin` header** (browser) or not (server-to-server), the `grant_type`, `client_id`, redirect URI, and client-authentication method? Send **presence indicators or SHA-256 hashes only** for `code`, `code_verifier`, `refresh_token`, `assertion`, `client_secret`, and `client_assertion` — never raw values. | The `Origin` header is the single fact that distinguishes a browser redemption (consistent with your `spa` registrations) from a genuine server-side redemption (which would need a `web` confidential-client registration). It classifies the grant without any credential exposure. |
-| Q8 | Can you confirm the **complete list of app registrations and service principals** GPD Central uses across environments — including any **confidential `web`/API registration** not among the three SPA exports we hold? | The three exports are public SPA clients only. If a real backend redeems the code, it must authenticate as a separate registration we have not yet seen. |
+| Q7 | **(Priority)** For one **successful** and one **failing** transaction, can you share the redacted `/authorize` and `/token` requests — in particular whether the `/token` POST carries an **`Origin` header** (browser) or not (server-to-server), the `grant_type`, `client_id`, redirect URI, and client-authentication method? Send **presence indicators or SHA-256 hashes only** for `code`, `code_verifier`, `refresh_token`, `assertion`, `client_secret`, and `client_assertion` — never raw values. | Our HAR confirms the redemption is not in the browser, so this request exists **only on your side**. The `Origin` fact plus the client-authentication method classifies the grant without any credential exposure. |
+| Q8 | **(Priority)** Can you confirm the **complete list of app registrations and service principals** GPD Central uses across environments — including any **confidential `web`/API registration** not among the three SPA exports we hold? | The three exports are public SPA clients only. Since the redemption is confirmed server-side, a **successful** redemption implies a separate confidential registration we have not seen; a **failing** one (`AADSTS9002327`) means the supported shape is missing entirely. |
 | Q9 | Do **Central** and **Conseiller** use the **same** client, redirect URI, backend, and token handling, or do they differ? | You asked whether they behave the same way; if they diverge, we must scope any accommodation per product. |
 
 ---
@@ -49,7 +64,8 @@ To choose the **most proportionate** internal accommodation, we need you to conf
 
 ## 4. What we will do with the answers
 
-* **Classify the grant first** from the captured `/token` request (Q7). An authorization-code grant with a matching PKCE verifier, followed by Graph use of the newly returned token, supports an ordinary authorization-code-with-PKCE design; `assertion` plus `requested_token_use=on_behalf_of` establishes OBO; the same bearer fingerprint crossing the boundary without a fresh issuance would indicate relay or replay.
+* **Resolve the fork first** from the captured `/token` request (Q7) and the registration inventory (Q8). A **failing** server-side redemption (`AADSTS9002327`) means the supported shape is a **`web` confidential client** with a certificate. A **succeeding** one means an undisclosed confidential registration is already in use, and we scope the accommodation to it.
+* **Classify the grant** from the same capture. An authorization-code grant with a matching PKCE verifier, followed by Graph use of the newly returned token, supports an ordinary authorization-code design; `assertion` plus `requested_token_use=on_behalf_of` establishes OBO; the same bearer fingerprint crossing the boundary without a fresh issuance would indicate relay or replay.
 * If a **true OBO is intended**: we will require an **exposed-API scope + confidential-client credential** on the Croesus backend, then apply a scoped internal accommodation.
 * If a **server-side redemption is intended**: note that a `spa`-platform registration cannot service a no-`Origin` server-side redemption; the supported shape is a **`web` confidential-client** registration with a certificate. We will then enforce a **Token Protection / token-binding CA control** and apply the cross-tenant device-trust accommodation only for the legitimate non-prod path.
 * Either way, we will prefer **Entra B2B "Trust compliant devices"** (addresses the root cause) over a broad CA exception, and we will keep any accommodation **scoped to the non-prod app**. We will not change Conditional Access, allowlist AWS IPs, or mandate OBO before the grant is classified.

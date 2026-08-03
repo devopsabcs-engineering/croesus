@@ -1,0 +1,22 @@
+{
+  "name": "@./croesus",
+  "version": "1.0.0",
+  "description": "> [!IMPORTANT]\r > **Step 1 is done: the redemption is confirmed server-side.** A browser HAR captured by Desjardins (Mathieu Santerre) during a real Central sign-in contains **only `/oauth2/v2.0/authorize` and no `/oauth2/v2.0/token`**. The authorization code leaves the browser, but it is redeemed **off the user's machine** — which **corroborates the vendor's statement** that the `/token` call runs on the Croesus AWS backend. Desjardins can no longer capture the `Origin` header itself, because the request never touches a Desjardins browser.\r >\r > **The open item is now a fork, not an unknown.** A server-side redemption against a **`spa` public-client** registration should be rejected by Entra with **`AADSTS9002327`**. So exactly one of these is true: (a) the redemption **fails**, and Central needs a **`web` confidential-client** registration; or (b) the redemption **succeeds**, which means the backend authenticates as a **confidential registration nobody has shown us** — beyond the three `spa` exports we hold.\r >\r > **Who does what next:** Desjardins can still test the fork alone by reading its **own Entra sign-in logs** for the server-side leg (see [Who can capture the `/token` `Origin` header](#who-can-capture-the-token-origin-header)). The raw `/token` request now lives exclusively with **Croesus (Olivier Leblanc)**, so send the [Croesus escalation packet](assets/croesus-escalation-packet.md) and ask **Q7** (the redacted `/token` capture) **and Q8** (complete app-registration and service-principal inventory), which this finding promotes to co-primary. Presence indicators and SHA-256 hashes only, never raw tokens or secrets.\r >\r > **Guardrail:** until the grant is classified, do not change Conditional Access, allowlist AWS IPs, or mandate OBO.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/devopsabcs-engineering/croesus.git"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/devopsabcs-engineering/croesus/issues"
+  },
+  "homepage": "https://github.com/devopsabcs-engineering/croesus#readme"
+}
