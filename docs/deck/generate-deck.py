@@ -11,6 +11,7 @@ from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.util import Inches, Pt
 
 OUT = Path(__file__).resolve().parent / "croesus-session-deck.pptx"
+FORK_PNG = Path(__file__).resolve().parent / "fork-panel.png"
 
 REPO = "https://github.com/devopsabcs-engineering/croesus"
 PACKET = f"{REPO}/blob/main/assets/croesus-escalation-packet.md"
@@ -334,6 +335,19 @@ add_text(s, "\u201cTokens issued for the 'Single-Page Application' client-type m
 notes(s, "Make the point technically, not accusingly: this is a platform rule, "
          "not an opinion. It is also cheap to fix on either branch.")
 
+# ------------------------------------------------------------ SLIDE 7-BIS
+if FORK_PNG.exists():
+    s = new_slide(WHITE)
+    title(s, "The same fork, live in the demo", "Screenshot")
+    pic = s.shapes.add_picture(str(FORK_PNG), Inches(3.55), Inches(1.95),
+                               height=Inches(5.1))
+    pic.left = Inches((13.333 - pic.width.inches) / 2)
+    add_link(s, "\u25b6  Open it live \u2014 croesus-spa.azurewebsites.net",
+             DEMO_APP, 0.75, 7.02, 6.5, 0.35, size=13, bold=True)
+    notes(s, "The panel renders without signing in, so it can be walked through "
+             "on screen share. Q7, Q8, and the full question list are clickable "
+             "straight from the page.")
+
 # ---------------------------------------------------------------- SLIDE 8
 s = new_slide()
 title(s, "Who can answer what", "Ownership of the evidence")
@@ -414,7 +428,9 @@ bullets(s, [
      (" a panel walks through spa vs web and the AADSTS9002327 behaviour, with "
       "direct links to Q7 and Q8.", False)],
     [("Token inspector and evidence panel:", True),
-     (" decoded claims show audience binding rather than a reused bearer.", False)],
+     (" decoded claims show audience binding rather than a reused bearer. The raw-token "
+      "inspector is gated off by default \u2014 we ask the vendor for hashes, so we do not "
+      "demo copying live tokens.", False)],
     [("Tier 2 exhibits (gated):", True),
      (" a server-side replay control, and a report-only Token Protection policy "
       "that reproduces the real 1008 signal on a supported resource.", False)],

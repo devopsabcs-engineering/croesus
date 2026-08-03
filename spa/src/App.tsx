@@ -22,6 +22,10 @@ import { TokenInspectorPanel } from "./components/TokenInspectorPanel";
 // flag is exactly the string "true"; with the gate off, nothing Tier 2 is shown.
 const replayDemoEnabled = import.meta.env.VITE_ENABLE_REPLAY_DEMO === "true";
 
+// The raw-token inspector puts a live bearer credential on the clipboard, so it
+// stays off unless a presenter explicitly enables it for an internal walkthrough.
+const tokenInspectorEnabled = import.meta.env.VITE_ENABLE_TOKEN_INSPECTOR === "true";
+
 function ContrastPanel() {
   return (
     <section style={{ marginTop: 32 }}>
@@ -235,7 +239,7 @@ export default function App() {
       </AuthenticatedTemplate>
 
       <AuthenticatedTemplate>
-        <TokenInspectorPanel />
+        {tokenInspectorEnabled && <TokenInspectorPanel />}
       </AuthenticatedTemplate>
 
       <ContrastPanel />

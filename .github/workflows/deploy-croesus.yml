@@ -50,6 +50,11 @@ jobs:
           # enabled. Enabling only the API leaves the control absent (backlog #9).
           # App.tsx gates on the exact string "true".
           VITE_ENABLE_REPLAY_DEMO: ${{ vars.ENABLE_REPLAY_LAB }}
+          # Client-side gate for the demo-only raw-token inspector. It copies a live
+          # bearer token to the clipboard for jwt.ms, so it stays off unless a
+          # presenter opts in for an internal walkthrough. App.tsx gates on the
+          # exact string "true".
+          VITE_ENABLE_TOKEN_INSPECTOR: ${{ vars.ENABLE_TOKEN_INSPECTOR }}
         run: |
           npm ci
           npm run build

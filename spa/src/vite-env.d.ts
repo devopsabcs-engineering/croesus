@@ -16,6 +16,13 @@ interface ImportMetaEnv {
    * when this equals the string "true"; otherwise nothing Tier 2 is shown.
    */
   readonly VITE_ENABLE_REPLAY_DEMO?: string;
+  /**
+   * Gate for the demo-only raw-token inspector, which copies a live bearer token
+   * to the clipboard for jwt.ms. Renders only when this equals the string "true".
+   * Keep it off for customer-facing sessions: the escalation packet asks the
+   * vendor for hashes and presence indicators, never raw tokens.
+   */
+  readonly VITE_ENABLE_TOKEN_INSPECTOR?: string;
 }
 
 interface ImportMeta {

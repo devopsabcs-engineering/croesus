@@ -32,7 +32,7 @@ export function RegistrationShapePanel() {
           no <code style={codeStyle}>/oauth2/v2.0/token</code>
         </strong>
         , so the code is redeemed <strong>server-side</strong> — as the vendor stated. Microsoft
-        Entra rejects a plain server-side redemption of a <code style={codeStyle}>spa</code>
+        Entra rejects a plain server-side redemption of a <code style={codeStyle}>spa</code>{" "}
         authorization code with <code style={codeStyle}>AADSTS9002327</code>. The three registrations
         we hold are all <code style={codeStyle}>spa</code> public clients: no secret, no certificate,
         no exposed API scope. Exactly one branch below is true.

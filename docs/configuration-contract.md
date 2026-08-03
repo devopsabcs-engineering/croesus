@@ -41,6 +41,7 @@ Each row below names one value, where it is defined, and every component that re
 | Application Insights connection string | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Bicep output (App Insights resource), stored in Key Vault | not used | `APPLICATIONINSIGHTS_CONNECTION_STRING` (App Service Key Vault reference) | `appInsightsConnectionString` | not used (resolved at runtime via Key Vault reference, not the workflow) |
 | Replay demo endpoint toggle | `Demo:EnableReplay` | Fixed convention in this contract, default `false` | not used | `Demo__EnableReplay` (set directly in Bicep app settings) | not used | not used |
 | Tier 2 replay UI toggle | `VITE_ENABLE_REPLAY_DEMO` | Fixed convention in this contract, default `false` | `VITE_ENABLE_REPLAY_DEMO` | not used | not used | `vars.VITE_ENABLE_REPLAY_DEMO` |
+| Raw-token inspector toggle | `VITE_ENABLE_TOKEN_INSPECTOR` | Fixed convention in this contract, default `false` | `VITE_ENABLE_TOKEN_INSPECTOR` | not used | not used | `vars.ENABLE_TOKEN_INSPECTOR` |
 | SPA Graph delegated scope | `VITE_GRAPH_SCOPE` | Fixed convention in this contract, default `User.Read` | `VITE_GRAPH_SCOPE` | not used | not used | `vars.VITE_GRAPH_SCOPE` |
 | Microsoft Graph base URL | `VITE_GRAPH_BASE_URL` | Fixed convention in this contract, optional, default `https://graph.microsoft.com/v1.0` | `VITE_GRAPH_BASE_URL` | not used | not used | `vars.VITE_GRAPH_BASE_URL` |
 
