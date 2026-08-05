@@ -114,10 +114,11 @@ Sized relatively. "Croesus code change" is the column that usually decides how f
 | **R2** | **Align non-prod CA scoping to Prod** for the Central app only | Desjardins | None | Small | Possibly the actual fix |
 | **R3** | Scoped CA exception using an **AWS named location** | Desjardins | None | Small | Weakest workaround |
 | **R4** | **Correct the registration shape**: `spa` → `web` confidential client | Both | Yes, narrow | Medium | **Durable fix** |
-| **R5** | **Workload identity federation** from AWS, no stored credential | Both | Yes, narrow | Medium | Durable, best-in-class |
+| **R5** | **Workload identity federation**, only with a supported external OIDC workload-token source | Both | Yes, narrow | Medium | Conditional future route |
 | **R6** | Re-shape non-prod so users authenticate as **B2B guests** homed in Prod | Desjardins | None | Large | Fixes device claims only |
 | **R7** | Consolidate non-prod into a single tenant | Desjardins | None | Large | Last resort |
-| **R8** | **Uplift Central from .NET Framework 4.5.2** to a supported version | Croesus | Yes, broad | Large | Prerequisite for R5, and a standalone risk item |
+| **R8** | **Uplift Central from .NET Framework 4.5.2** to a supported version | Croesus | Yes, broad | Large | Standalone risk item |
+| **R9** | **Central authentication and credential ladder** | Croesus | Yes, staged | Small to large | Recommended architecture path |
 
 ### R1 — Route the Entra calls over the existing VPN
 
@@ -147,7 +148,7 @@ Works, but it is the weakest form of R1: Desjardins would be extending trust to 
 
 The only route that removes the mismatch rather than working around it. Stage it in two steps, because F11 makes the second step more expensive than the first:
 
-**Step 1, prove it with a secret.** Register the redirect URI under the **`web`** platform, add a client **secret**, and send `client_id` plus `client_secret` on the `/token` POST. This needs **no library, no framework uplift, and no new dependency** on .NET Framework 4.5.2. It is one additional form field. Do this in Dev only, and it settles the argument empirically.
+**Step 1, prove it with a secret.** Register the redirect URI under the **`web`** platform, add a client **secret**, and send `client_id` plus `client_secret` on the `/token` POST. Store the secret in a managed secret store or another protected deployment mechanism, never in plaintext application configuration. This needs **no library, no framework uplift, and no new dependency** on .NET Framework 4.5.2. It is one additional form field. Do this in Dev only, and it settles the argument empirically.
 
 **Step 2, harden it with a certificate.** Replace the secret with a certificate credential and send `client_assertion`. Still feasible on 4.5.2 via `System.IdentityModel.Tokens.Jwt`, though this is the point at which a framework uplift (R8) starts paying for itself.
 
@@ -163,13 +164,23 @@ Against F3 and F11, three points matter:
 
 Not a route to fixing the SSO issue, and we should be careful not to present it as one. R4 step 1 does not need it.
 
-It appears here for two reasons. It is a **prerequisite for R5** and for any use of current Microsoft authentication libraries. And per A7 it is a **standalone vendor-risk item**: Central handles Desjardins identity on a runtime that has been out of support since April 2022. Raise it in vendor risk review on its own merits, on its own timeline, and deliberately not as leverage in this escalation.
+It appears here because current Microsoft authentication libraries require a newer target and because A7 is a **standalone vendor-risk item**: Central handles Desjardins identity on a runtime that has been out of support since April 2022. Installing .NET Framework 4.8 on the servers is not the same as retargeting and recompiling Central for 4.8. The maintainable uplift requires both, followed by regression testing of authentication, session handling, and the server-rendered application. Raise it in vendor risk review on its own merits, on its own timeline, and deliberately not as leverage in this escalation.
 
 ### R5 — Workload identity federation
 
-A variant of R4 worth raising because it removes credential management entirely. Entra supports federation from external OIDC-compliant issuers, so an AWS-hosted workload may be able to authenticate with a federated token instead of a stored certificate.
+A conditional variant of R4 that can remove stored application credentials. Entra workload identity federation requires a token from a supported external OIDC workload-token source. AWS hosting alone does not provide that token, and a classic Windows VM running IIS cannot use workload identity federation unless Croesus introduces a supported external issuer and workload-token delivery mechanism.
 
-Treat this as directional rather than actionable today. It needs current MSAL.NET, which does not run on .NET Framework 4.5.2 (A9), so R8 gates it. Raise it as the destination, not the next step.
+For Central's reported hosting shape, a certificate credential is the realistic security ceiling until the hosting or workload-identity substrate changes. R8 can enable current authentication libraries, but R8 alone does not supply an external OIDC workload token and therefore does not make R5 actionable.
+
+### R9 — Central authentication and credential ladder
+
+Central already has the required BFF boundary: server-rendered pages, a server-held session, and server-side token redemption. The ladder changes the authentication module and credential posture, not the roughly 130 `.aspx` pages.
+
+1. **Immediate proof:** move the Central redirect URI from `spa` to `web`, prove confidential redemption with a client secret, and keep that secret outside plaintext application configuration. Limit the proof to Dev and the centralized token-acquisition path.
+2. **Operational destination:** install .NET Framework 4.8, retarget and recompile Central for 4.8, centralize authentication in OWIN middleware, retain authorization code with PKCE, and replace the proof secret with a non-exportable certificate credential. Installing the runtime alone is not an application uplift. Regression testing is required before rollout.
+3. **Optional longer-term architecture:** introduce an ASP.NET Core authentication gateway as a strangler only if Croesus wants to retire legacy authentication incrementally. Isolate the gateway at the network boundary and forward identity to Central using a cryptographically protected mechanism with explicit audience, issuer, lifetime, and replay controls.
+
+Q10 remains the sizing check. It separates the files that acquire tokens from the files that consume the session or authentication result, and it prevents the reported 27-file estimate from being mistaken for a 130-page rewrite.
 
 ### R6 and R7 — identity-model changes
 
@@ -212,7 +223,7 @@ Reach for a genuine `.aspx` build on 4.5.2 only if Croesus disputes the equivale
 3. **Ask Croesus Q12 (VPN routing) in parallel.** It is the fastest unblock that needs no vendor code change.
 4. **Send the remaining questions** (Q7, Q8, Q10, Q11, Q13, Q9) via the [escalation packet](croesus-escalation-packet.md).
 5. **Apply R1 or R2** as the short-term unblock for non-prod, scoped to the non-prod application only.
-6. **Propose R4 step 1 (secret, Dev only)** as the durable fix's cheapest first move, staged per-tenant so Croesus carries no multi-customer risk.
+6. **Propose R9 step 1 (secret, Dev only)** as the durable fix's cheapest first move, staged per-tenant so Croesus carries no multi-customer risk and stores no secret in plaintext configuration.
 7. **Track R8 and the Conseiller assessment separately**, on their own timelines, outside this escalation.
 
 ---
@@ -231,7 +242,28 @@ Until the registration shape and the grant are settled:
 
 ---
 
-## 8. Related documents
+## 8. Separate assessment boundary: Conseiller
+
+> [!WARNING]
+> **This section does not broaden the active escalation. The active escalation remains Central-only.** The information below is a fenced intake for a separate Conseiller assessment and must not be used as evidence about Central.
+
+Croesus reported that Conseiller uses an in-house identity server and mentioned SAML plus IdentityServer/Duende-like technology. The exact product, edition, and version are not confirmed, so none should be asserted until Croesus supplies the deployment inventory.
+
+The preferred federation direction is **Entra upstream of the in-house identity server**. Interactive users should authenticate with Entra first so Conditional Access, MFA, device compliance, and sign-in risk are evaluated at the Entra sign-in. The identity server can then broker the resulting identity to Conseiller. SAML should remain a legacy compatibility path where an existing dependency requires it, not the target for new integration work.
+
+The separate assessment must confirm:
+
+* Whether the deployed product is IdentityServer4, Duende IdentityServer, or another implementation, including its exact supported version
+* Whether IdentityServer4 end-of-support applies and what migration path is available
+* Whether Duende commercial licensing applies to the deployed or proposed use
+* Who holds signing keys, whether they are exportable, where they are stored, and how rotation, overlap, recovery, and audit are handled
+* Which protocols and relying parties still require SAML, and which new work can use OIDC or OAuth 2.0
+
+No Conseiller remediation belongs in the Central escalation until that assessment is complete.
+
+---
+
+## 9. Related documents
 
 * [Vendor escalation packet](croesus-escalation-packet.md) — the artifact sent to Croesus, carrying Q1 through Q12.
 * [App registration analysis findings](app-registration-analysis-findings.md) — the registration-level evidence.

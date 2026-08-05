@@ -116,6 +116,19 @@ Correct the repository's documentation, tests, and evidence tooling so they stat
 * [x] Step 5.3: Report blocking issues
   * Document issues requiring additional research or a live tenant, and provide next steps rather than large-scale inline fixes
 
+### [x] Implementation Phase 6: Central Authentication Ladder and Conseiller Boundary
+
+<!-- parallelizable: false -->
+
+* [x] Step 6.1: Add the secure Central authentication-shape ladder
+  * Details: .copilot-tracking/details/2026-07-28/croesus-registration-evidence-corrections-details.md (Implementation Phase 6)
+* [x] Step 6.2: Correct R5 workload-federation applicability
+  * Details: .copilot-tracking/details/2026-07-28/croesus-registration-evidence-corrections-details.md (Implementation Phase 6)
+* [x] Step 6.3: Add a fenced Conseiller federation-direction assessment
+  * Details: .copilot-tracking/details/2026-07-28/croesus-registration-evidence-corrections-details.md (Implementation Phase 6)
+* [x] Step 6.4: Validate the authoritative findings document
+  * Run focused Markdown diagnostics on assets/croesus-3way-session-findings.md
+
 ## Planning Log
 
 See .copilot-tracking/plans/logs/2026-07-28/croesus-registration-evidence-corrections-log.md for discrepancy tracking, implementation paths considered, and suggested follow-on work.

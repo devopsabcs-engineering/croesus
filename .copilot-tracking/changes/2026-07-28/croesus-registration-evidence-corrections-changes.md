@@ -19,6 +19,7 @@ Correct the repository's documentation, tests, and evidence tooling to state the
 
 ### Modified
 
+* assets/croesus-3way-session-findings.md - Added R9's staged Central authentication ladder; corrected R5 so workload federation requires an external OIDC workload-token source; separated runtime installation from retargeting and regression testing; fenced the reported Conseiller identity-server, SAML, and Duende-like architecture as a separate assessment with Entra upstream as the preferred federation direction (Phase 6)
 * README.md - Made replay/1008/OBO-required claims evidence-qualified: authorization code with PKCE is the leading unclassified hypothesis, 1008 relabeled as a broker-binding status, OBO reframed as one contingent option; browser-1008 exhibit retained with a DR-01 verification NOTE (Phase 1, Step 1.1)
 * docs/evidence-narrative.md - Certificate-thumbprint claim changed to credential source/name; API-token-to-Graph 401 labeled structurally asserted; leg-2 jti/iat/decoded-audience replaced with correlation-id/token-source/expiry; added a Registration correctness section (spa-vs-web verdict, verbatim AADSTS9002327, Origin-header decisive artifact, 1008-not-replay guard) (Phase 1, Steps 1.2, 1.4)
 * docs/obo-demo-guide.md - Downstream token-B jti/iat, decoded-audience, and thumbprint claims aligned to what the code emits; negative-test wording made status-neutral (Phase 1, Step 1.2); fixed two pre-existing markdownlint findings (MD028 blank line between adjacent alerts, MD012 double blank line) (WI-06)
@@ -46,7 +47,7 @@ Correct the repository's documentation, tests, and evidence tooling to state the
 
 ## Release Summary
 
-All five phases complete plus four in-repo follow-ons (WI-05, WI-06, WI-07, and the ready-to-send escalation packet for WI-01/02/03). 4 files added, 10 files modified, 0 removed.
+All six phases complete plus four in-repo follow-ons (WI-05, WI-06, WI-07, and the ready-to-send escalation packet for WI-01/02/03). Phase 6 adds the practical Central authentication ladder, corrects workload-federation applicability for classic IIS hosting, and records Conseiller's identity-server architecture as a separate assessment. 4 files added, 11 files modified, 0 removed.
 
 Added:
 * api/Tests/MeControllerTests.cs - deterministic OBO happy-path coverage
@@ -55,6 +56,7 @@ Added:
 * api/Tests/AssemblyInfo.cs - serializes the test assembly to keep the flaky-fix deterministic
 
 Modified:
+* assets/croesus-3way-session-findings.md - Central authentication ladder, corrected workload-federation constraints, and fenced Conseiller federation assessment (Phase 6)
 * README.md, docs/evidence-narrative.md, docs/obo-demo-guide.md, docs/configuration-contract.md - evidence-qualified position, correct 1008 framing, registration-correctness note, enforcement-path fix (obo-demo-guide also got a markdownlint hygiene pass, WI-06)
 * assets/app-registration-analysis-findings.md - revised-position banner and evidence-qualified replay/1008 claims (WI-07)
 * assets/croesus-escalation-packet.md - revised-position framing plus the decisive `/token` Origin-header, full-inventory, and Central-vs-Conseiller asks (WI-01/02/03 ready-to-send)

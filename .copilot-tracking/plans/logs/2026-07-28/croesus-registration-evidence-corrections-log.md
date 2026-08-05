@@ -102,3 +102,9 @@ Items identified during planning that fall outside current scope.
 * WI-08: Consider a Testing-only global exception handler in the API so downstream failures surface as HTTP 500 rather than propagating out of the TestServer, enabling a concrete-status accept-path assertion — (low)
   * Source: Phase 2, DD-02
   * Dependency: production/design decision
+* WI-09: Confirm Conseiller's exact identity-server product, edition, and supported version before selecting a migration or federation implementation — (high)
+  * Source: Phase 6, Step 6.3
+  * Dependency: Croesus deployment inventory
+* WI-10: Confirm whether a future Central hosting model can supply a supported external OIDC workload token before reconsidering workload identity federation — (medium)
+  * Source: Phase 6, Step 6.2
+  * Dependency: Croesus hosting and workload-identity roadmap

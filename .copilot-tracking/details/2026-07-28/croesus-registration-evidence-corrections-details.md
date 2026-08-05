@@ -331,6 +331,32 @@ When a failure requires a live tenant (Phase 4) or additional research, document
 * .NET 8 SDK, Node.js/npm, markdownlint/mega-linter
 * Optional Phase 4: a nonproduction Microsoft Entra tenant with `spa` and `web` apps and a certificate credential
 
+## Implementation Phase 6: Central Authentication Ladder and Conseiller Boundary
+
+<!-- parallelizable: false -->
+
+### Step 6.1: Add the secure Central authentication-shape ladder
+
+Update assets/croesus-3way-session-findings.md with an R9 route that distinguishes the immediate proof from the maintainable destination. State that Central already has the BFF boundary: server-rendered pages, a server-held session, and server-side token redemption. Rank the practical options as follows:
+
+1. Correct `spa` to `web` and prove confidential redemption with a client secret stored outside plaintext configuration.
+2. Install and retarget to .NET Framework 4.8, centralize authentication in OWIN middleware, keep PKCE, and use a non-exportable certificate credential.
+3. Introduce an ASP.NET Core authentication gateway only as a longer-term strangler architecture, with network isolation and cryptographically protected identity forwarding.
+
+Do not imply that 130 `.aspx` pages need modification. Q10 remains the check for duplicated token acquisition across the reported 27 files.
+
+### Step 6.2: Correct R5 workload-federation applicability
+
+Revise R5 so workload identity federation is conditional on the host having a supported external OIDC workload-token source. A classic Windows VM running IIS does not provide one merely because it is hosted on AWS. For Central's reported shape, a certificate credential is the realistic security ceiling until hosting changes. Remove the claim that R8 alone makes R5 actionable.
+
+### Step 6.3: Add a fenced Conseiller federation-direction assessment
+
+Add the newly reported facts without broadening Central's escalation scope: Conseiller uses an in-house identity server and SAML and/or OIDC/OAuth technology such as Duende IdentityServer. Document the preferred direction as Entra upstream of the identity server so Conditional Access, MFA, device compliance, and sign-in risk evaluate at the interactive Entra sign-in. Treat SAML as a legacy compatibility path, not a target for new work. Flag IdentityServer4 end-of-support, Duende commercial licensing, and signing-key custody/rotation for the separate Conseiller assessment. Do not assert the exact product or version until Croesus confirms it.
+
+### Step 6.4: Validate the authoritative findings document
+
+Run focused Markdown diagnostics on assets/croesus-3way-session-findings.md. The file must have no new diagnostics.
+
 ## Success Criteria
 
 * Docs, tests, and evidence tooling reflect the evidence-qualified revised position with accurate `1008` and registration-correctness framing, and all non-optional tests pass
