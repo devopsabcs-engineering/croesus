@@ -27,6 +27,8 @@ ORIGIN_SECTION = f"{README}#who-can-capture-the-token-origin-header"
 NARRATIVE = f"{REPO}/blob/main/docs/evidence-narrative.md"
 DEMO_GUIDE = f"{REPO}/blob/main/docs/obo-demo-guide.md"
 KQL = f"{REPO}/blob/main/scripts/evidence-kql.kusto"
+FINDINGS = f"{REPO}/blob/main/assets/croesus-3way-session-findings.md"
+ROUTES = f"{FINDINGS}#4-routes-and-workarounds"
 DEMO_APP = "https://croesus-spa.azurewebsites.net"
 
 BLUE_DEEP = RGBColor(0x00, 0x1B, 0x3D)
@@ -49,18 +51,19 @@ CONTENT = {}
 CONTENT["en"] = {
     "out": "croesus-session-deck.pptx",
     "title_kicker": "DESJARDINS \u2014 CROESUS \u2014 MICROSOFT  |  JOINT WORKING SESSION",
-    "title_main": "GPD Central SSO: what the evidence proves,\nand the two questions that close it",
+    "title_main": "GPD Central SSO: what the evidence proves,\nand the routes that close it",
     "title_sub": "Entra ID app registrations, Conditional Access, and the "
-                 "server-side /token redemption",
-    "title_date": "3 August 2026",
+                 "server-side /token redemption  |  Central only — not Conseiller",
+    "title_date": "5 August 2026  —  updated after the three-way session",
     "title_links": [
+        ("\u25b6  Session findings and all eight routes", FINDINGS),
+        ("\u25b6  Question list (Q1\u2013Q14) on GitHub", QUESTIONS),
         ("\u25b6  Live demo \u2014 croesus-spa.azurewebsites.net", DEMO_APP),
-        ("\u25b6  Question list (Q1\u2013Q9) on GitHub", QUESTIONS),
-        ("\u25b6  Full analysis \u2014 README", README),
     ],
     "title_notes": "Framing: this is a joint fact-finding session, not a defect "
                    "report. The Conditional Access block is correct-by-design. "
-                   "We have one open question and two asks that close it.",
+                   "Scope is GPD Central only — Conseiller is a separate product "
+                   "and a separate assessment. Say that out loud early.",
 
     "s2_kicker": "Why we are here",
     "s2_title": "The question on the table",
@@ -82,23 +85,28 @@ CONTENT["en"] = {
     "s3_kicker": "Where we stand today",
     "s3_title": "Bottom line",
     "s3_bullets": [
+        [("Central is a ", False), ("server-rendered multi-page application", True),
+         (" — ~130 .aspx pages on .NET Framework 4.5.2. Vendor-confirmed. It is "
+          "not a browser SPA.", False)],
+        [("So the ‘spa’ platform on the three registrations is a ", False),
+         ("type mismatch", True),
+         (", not a description. Central is already a Backend-for-Frontend; "
+          "‘web’ is the platform that says so.", False)],
+        [("Central works in Prod, so the server-side redemption is ", False),
+         ("succeeding", True),
+         (" against registrations Entra should reject. Only two explanations "
+          "survive — a synthesised Origin header, or an undisclosed ‘web’ "
+          "registration. ", False), ("Q8 is the primary ask.", True)],
+        [("The prod/non-prod split is ", False), ("not yet explained", True),
+         (" — the blocked leg carries no device context in either tenant. "
+          "Desjardins can settle this alone, this week.", False)],
         [("The Conditional Access block is ", False), ("correct-by-design", True),
-         (". CA reacts to the origin and context of the request, not to the "
-          "grant type.", False)],
-        [("The /token redemption is now ", False), ("confirmed server-side", True),
-         (" \u2014 a Desjardins browser trace shows /authorize but no /token. This "
-          "corroborates Croesus.", False)],
-        [("The grant is ", False), ("still not classified", True),
-         (" from a captured request. /token is the normal endpoint for code "
-          "redemption and refresh \u2014 it is not evidence of On-Behalf-Of.", False)],
-        [("The \u201cUnbound (1008)\u201d line is a ", False),
-         ("device- and session-binding status", True),
-         (", not proof of token replay and not a grant classifier.", False)],
-        [("Next: resolve the fork with ", False), ("Q7 and Q8", True),
-         (". Change nothing in Conditional Access until then.", False)],
+         (". The “Unbound (1008)” line is a binding status, not proof of "
+          "replay and not a grant classifier.", False)],
     ],
     "s3_notes": "This slide is the executive summary. If the session ends after "
-                "five minutes, these five lines are what must land.",
+                "five minutes, these five lines are what must land. Scope: "
+                "Central only.",
 
     "s4_kicker": "Discipline",
     "s4_title": "What the evidence does \u2014 and does not \u2014 prove",
@@ -143,45 +151,47 @@ CONTENT["en"] = {
                 "what Croesus said \u2014 we are validating the vendor, not "
                 "contradicting them.",
 
-    "s6_kicker": "Hypothesis to verify",
-    "s6_title": "The fork this creates",
-    "s6_intro": "Microsoft Entra rejects a plain server-side redemption of a "
-                "\u2018spa\u2019 authorization code with AADSTS9002327. A "
-                "server-side redemption and a spa-only registration cannot both hold.",
-    "s6_a_head": "Branch A \u2014 the redemption FAILS",
+    "s6_kicker": "What follows from it",
+    "s6_title": "The type mismatch, and the two explanations left",
+    "s6_intro": "Entra rejects a plain server-side redemption of a ‘spa’ "
+                "authorization code with AADSTS9002327. Central works in Prod, so "
+                "the redemption is succeeding. Exactly two explanations survive.",
+    "s6_a_head": "1 — A synthesised Origin header",
     "s6_a": [
-        ("Entra returns AADSTS9002327.", True),
-        ("A spa public client cannot service a no-Origin redemption. The "
-         "supported registration shape is missing.", False),
-        ("Fix: Croesus registers a \u2018web\u2019 confidential client with a "
-         "certificate credential.", True),
+        ("A server-to-server POST sets no Origin of its own.", True),
+        ("If one is present, application code is adding it — and a spa-typed "
+         "code is surviving a rule Entra wrote to reject it.", False),
+        ("Fix: register Central as a ‘web’ confidential client. Prove it with "
+         "a client secret — no library, no framework uplift — then harden "
+         "with a certificate.", True),
     ],
-    "s6_b_head": "Branch B \u2014 the redemption SUCCEEDS",
+    "s6_b_head": "2 — An undisclosed ‘web’ registration",
     "s6_b": [
-        ("No AADSTS9002327 in the logs.", True),
-        ("Then the backend authenticates as a registration outside the three spa "
-         "exports we were given.", False),
+        ("The backend authenticates as something outside our three exports.", True),
+        ("Then the shape is already correct and we have simply never been shown "
+         "it.", False),
         ("Fix: Croesus discloses the complete inventory (Q8); any accommodation "
          "is scoped to it.", True),
     ],
-    "s6_caveat": "Caveat: if Conditional Access blocks the leg first, the logs "
-                 "show a CA failure code instead \u2014 that does not settle the "
-                 "question.",
-    "s6_notes": "This is the core hypothesis slide. Exactly one branch is true and "
-                "each has a different, small remediation. Neither is a crisis.",
+    "s6_caveat": "Separately, and still open: the blocked leg carries no device "
+                 "context in EITHER tenant, yet Prod passes. That is Desjardins’ "
+                 "to settle from its own policy inventory and sign-in logs.",
+    "s6_notes": "This is the core slide. Neither explanation is a crisis and both "
+                "have small remediations. Q8 separates them in one answer.",
 
     "s7_kicker": "Background",
     "s7_title": "Why the registration shape matters",
     "s7_headers": ["", "spa (public client)", "web (confidential client)"],
     "s7_rows": [
+        ["Describes", "A browser public client", "A server-rendered web app / BFF"],
         ["Credential", "None \u2014 no secret, no certificate",
          "Secret or certificate required"],
         ["Redeems a code", "Only from a cross-origin browser request (Origin header)",
          "From a server, no Origin required"],
         ["Server-side redemption", "Rejected: AADSTS9002327", "Supported"],
-        ["Exposed API scope", "None in the three exports", "Required for On-Behalf-Of"],
-        ["What we hold today", "All three: dev-dev, dev-prod, prod-prod",
-         "None disclosed"],
+        ["Refresh token lifetime", "Capped at 24 hours, non-sliding",
+         "Not capped that way"],
+        ["What Central actually is", "Not this", "This \u2014 ~130 .aspx pages"],
     ],
     "s7_quote": "\u201cTokens issued for the 'Single-Page Application' client-type "
                 "may only be redeemed via cross-origin requests.\u201d  "
@@ -190,7 +200,7 @@ CONTENT["en"] = {
                 "rule, not an opinion. It is also cheap to fix on either branch.",
 
     "s7b_kicker": "Screenshot",
-    "s7b_title": "The same fork, live in the demo",
+    "s7b_title": "The same mismatch, live in the demo",
     "s7b_link": "\u25b6  Open it live \u2014 croesus-spa.azurewebsites.net",
     "s7b_notes": "The panel renders without signing in, so it can be walked "
                  "through on screen share. Q7, Q8, and the full question list are "
@@ -200,72 +210,80 @@ CONTENT["en"] = {
     "s8_title": "Who can answer what",
     "s8_headers": ["Question", "Who can answer", "Status"],
     "s8_rows": [
-        ["Origin header on a browser-side /token call",
-         "Desjardins \u2014 browser DevTools", "Ruled out \u2014 no /token in the HAR"],
+        ["Complete registration / service-principal inventory",
+         "Croesus", "OPEN \u2014 Q8, the primary ask"],
         ["Origin header on the server-side /token call",
          "Croesus only \u2014 their outbound request", "Open \u2014 Q7"],
-        ["Did the second leg succeed or fail with AADSTS9002327?",
-         "Desjardins \u2014 own Entra sign-in logs", "In progress"],
-        ["Complete registration / service-principal inventory",
-         "Croesus", "Open \u2014 Q8"],
-        ["AWS egress IP ranges, intended flow definition", "Croesus",
-         "Open \u2014 Q4, Q1"],
+        ["Which auth library, and any .NET uplift on the roadmap",
+         "Croesus", "Open \u2014 Q13"],
+        ["How Prod and non-prod scope CA for Central",
+         "Desjardins \u2014 own policy inventory", "In progress \u2014 highest value"],
+        ["Origin header on a browser-side /token call",
+         "Desjardins \u2014 browser DevTools", "Ruled out \u2014 no /token in the HAR"],
     ],
     "s8_link": "Details: README \u2014 Who can capture the /token Origin header \u2192",
     "s8_notes": "The raw Origin header is never a field in the tenant sign-in "
                 "logs. It exists only on the HTTP request the caller sends to Entra.",
 
     "s9_kicker": "What we need from Croesus",
-    "s9_title": "The asks: Q7 and Q8",
-    "s9_q7_head": "Q7 \u2014 one redacted /token capture",
+    "s9_title": "The asks: Q8 first, then Q7",
+    "s9_q7_head": "Q8 \u2014 complete registration inventory",
     "s9_q7": [
+        ("Every app registration and service principal GPD Central uses, across "
+         "environments.", True),
+        ("Including any confidential web/API registration that is not among the "
+         "three spa exports we hold.", False),
+        ("One answer separates the two surviving explanations. This is the "
+         "fastest route to a supported configuration.", True),
+    ],
+    "s9_q8_head": "Q7 \u2014 one redacted /token capture",
+    "s9_q8": [
         ("For one successful and one failing transaction:", True),
         ("Is an Origin header present?  \u2022  grant_type  \u2022  client_id  "
          "\u2022  redirect URI  \u2022  client-authentication method", False),
         ("Presence indicators or SHA-256 hashes only. Never raw codes, tokens, "
          "secrets, or assertions.", True),
     ],
-    "s9_q8_head": "Q8 \u2014 complete registration inventory",
-    "s9_q8": [
-        ("Every app registration and service principal GPD Central uses, across "
-         "environments.", True),
-        ("Including any confidential web/API registration that is not among the "
-         "three spa exports we hold.", False),
-        ("Promoted to equal priority by the server-side finding.", True),
-    ],
-    "s9_also": "Also open: Q1 intended flow  \u2022  Q4 AWS egress ranges  \u2022  "
-               "Q5 cross-tenant device compliance  \u2022  Q6 token-binding "
-               "compatibility  \u2022  Q9 Central vs Conseiller parity",
-    "s9_link": "\u25b6  Full question list Q1\u2013Q9 on GitHub \u2192",
-    "s9_notes": "Stress the redaction rule up front. It is what makes Q7 "
-                "answerable by a security-conscious vendor.",
+    "s9_also": "Also open: Q13 auth library and .NET roadmap  \u2022  Q10 sizing "
+               "of the change  \u2022  Q12 route Entra calls over the existing "
+               "site-to-site VPN  \u2022  Q4 AWS egress ranges  \u2022  Q9 does "
+               "Conseiller share anything with Central?",
+    "s9_link": "\u25b6  Full question list Q1\u2013Q14 on GitHub \u2192",
+    "s9_notes": "Stress the redaction rule up front \u2014 it is what makes Q7 "
+                "answerable by a security-conscious vendor. Q8 leads because it "
+                "can end the ambiguity in a single reply.",
 
-    "s10_kicker": "Once the fork is resolved",
+    "s10_kicker": "Eight routes, ranked",
     "s10_title": "Remediation ladder",
     "s10_bullets": [
-        [("Classify first.", True),
-         (" No Conditional Access change, no AWS IP allowlist, and no OBO mandate "
-          "until the grant is known.", False)],
-        [("Branch A \u2192 register a web confidential client.", True),
-         (" A certificate credential on the Croesus side. Smallest possible "
-          "change; no Desjardins policy change needed.", False)],
-        [("Branch B \u2192 scope to the disclosed registration.", True),
-         (" Apply any accommodation to that specific service principal rather "
-          "than to a broad IP range.", False)],
+        [("Check tenant parity first \u2014 Desjardins alone.", True),
+         (" Compare how Prod and non-prod scope Conditional Access for Central. "
+          "No vendor dependency, and it may be the whole fix.", False)],
+        [("Route Entra calls over the existing site-to-site VPN (Q12).", True),
+         (" The /token request then egresses from a Desjardins-owned address. "
+          "No Croesus code change at all \u2014 the strongest short-term lever.", False)],
+        [("Correct the registration shape \u2014 spa \u2192 web.", True),
+         (" Staged: a client secret proves it with no library and no framework "
+          "uplift; a certificate hardens it later. Per-tenant, so Desjardins can "
+          "move first.", False)],
         [("Rule out device trust as the lever.", True),
          (" Cross-tenant \u2018Trust compliant devices\u2019 only fires on a B2B "
-          "guest sign-in, and the blocked leg is a server-side call with no "
-          "device context at all.", False)],
-        [("On-Behalf-Of is an option, not a requirement.", True),
-         (" It applies only if a genuine confidential middle tier is proven \u2014 "
-          "which requires an exposed API scope and a credential.", False)],
+          "guest sign-in. Workstations join one tenant \u2014 Prod \u2014 so in "
+          "non-prod \u2018require compliant device\u2019 is unsatisfiable, not "
+          "merely strict.", False)],
+        [("A named location is a condition, not a grant.", True),
+         (" Grant controls combine with AND, so a trusted location does not "
+          "satisfy a compliant-device requirement. On-Behalf-Of remains an "
+          "option, not a requirement.", False)],
     ],
-    "s10_notes": "The point: every branch has a small, reversible fix. Nobody "
-                 "needs a re-architecture, and Desjardins does not need to weaken "
-                 "CA. On device trust \u2014 credit Mathieu Santerre for the "
-                 "correction: the inbound trust settings honour a device claim "
-                 "carried in a guest's token from their home tenant, so they "
-                 "cannot bridge Prod device state into a native non-prod sign-in.",
+    "s10_notes": "The point: every route is small and reversible. Nobody needs a "
+                 "re-architecture and Desjardins does not need to weaken CA. On "
+                 "device trust \u2014 credit Mathieu Santerre for the correction: "
+                 "the inbound trust settings honour a device claim carried in a "
+                 "guest's token from their home tenant, so they cannot bridge "
+                 "Prod device state into a native non-prod sign-in. Do not use "
+                 "the .NET 4.5.2 support status as leverage \u2014 raise it "
+                 "separately through vendor risk review.",
 
     "s11_kicker": "Reference implementation",
     "s11_title": "The working demo",
@@ -277,9 +295,9 @@ CONTENT["en"] = {
          (" a token replay to Microsoft Graph is rejected on audience, while a "
           "real On-Behalf-Of exchange issues a distinct, separately audienced "
           "token.", False)],
-        [("The registration fork:", True),
+        [("The registration mismatch:", True),
          (" a panel walks through spa vs web and the AADSTS9002327 behaviour, "
-          "with direct links to Q7 and Q8.", False)],
+          "with direct links to Q8 and Q7.", False)],
         [("Token inspector and evidence panel:", True),
          (" decoded claims show audience binding rather than a reused bearer. The "
           "raw-token inspector is gated off by default \u2014 we ask the vendor "
@@ -303,34 +321,37 @@ CONTENT["en"] = {
     "s12_title": "Next steps and owners",
     "s12_headers": ["#", "Action", "Owner", "Closes"],
     "s12_rows": [
-        ["1", "Query Entra sign-in logs for the server-side leg: success vs "
-              "AADSTS9002327", "Desjardins", "Narrows the fork without the vendor"],
-        ["2", "Provide one redacted /token capture (hashes / presence only)",
+        ["1", "Compare Conditional Access scoping for Central across Prod and "
+              "non-prod", "Desjardins", "May be the whole fix \u2014 no vendor wait"],
+        ["2", "Provide the complete registration and service-principal inventory",
+         "Croesus", "Q8 \u2014 primary"],
+        ["3", "Provide one redacted /token capture (hashes / presence only)",
          "Croesus", "Q7"],
-        ["3", "Provide the complete registration and service-principal inventory",
-         "Croesus", "Q8"],
-        ["4", "Provide AWS egress IP ranges and the intended flow definition",
-         "Croesus", "Q4, Q1"],
-        ["5", "Choose the minimum remediation once the branch is known",
-         "Joint", "The escalation"],
+        ["4", "Confirm the auth library and any .NET Framework uplift plan",
+         "Croesus", "Q13"],
+        ["5", "Assess routing Entra calls over the existing site-to-site VPN",
+         "Joint", "Q12 \u2014 fastest unblock"],
     ],
     "s12_guardrail": "Guardrail until then: do not change Conditional Access, do "
-                     "not allowlist the AWS egress IPs, and do not mandate "
-                     "On-Behalf-Of.",
+                     "not allowlist the AWS egress IPs, do not mandate "
+                     "On-Behalf-Of, and do not generalise any of this to "
+                     "Conseiller.",
     "s12_notes": "Close by restating the guardrail. It protects both parties: no "
-                 "premature policy loosening, no premature vendor re-architecture.",
+                 "premature policy loosening, no premature vendor "
+                 "re-architecture. Item 1 is ours and needs nobody's permission.",
 
     "s13_kicker": "Everything referenced in this deck",
     "s13_title": "Links",
     "s13_links": [
-        ("Question list Q1\u2013Q9 (escalation packet)", QUESTIONS),
+        ("Session findings and all eight routes \u2014 START HERE", FINDINGS),
+        ("Routes and workarounds (R1\u2013R8)", ROUTES),
+        ("Question list Q1\u2013Q14 (escalation packet)", QUESTIONS),
         ("Escalation packet \u2014 full document", PACKET),
         ("Full analysis \u2014 README", README),
         ("Who can capture the /token Origin header", ORIGIN_SECTION),
         ("Evidence narrative \u2014 question-by-question mapping", NARRATIVE),
         ("On-Behalf-Of demo guide", DEMO_GUIDE),
         ("Evidence KQL queries", KQL),
-        ("Repository \u2014 devopsabcs-engineering/croesus", REPO),
         ("Live demo application", DEMO_APP),
     ],
     "s13_notes": "Share the deck itself \u2014 every link is clickable in "
@@ -342,19 +363,23 @@ CONTENT["fr"] = {
     "title_kicker": "DESJARDINS \u2014 CROESUS \u2014 MICROSOFT  |  "
                     "S\u00c9ANCE DE TRAVAIL CONJOINTE",
     "title_main": "SSO GPD Central : ce que la preuve d\u00e9montre,\n"
-                  "et les deux questions qui r\u00e8glent le dossier",
+                  "et les voies qui r\u00e8glent le dossier",
     "title_sub": "Inscriptions d'applications Entra ID, acc\u00e8s conditionnel "
-                 "et l'\u00e9change du code sur /token c\u00f4t\u00e9 serveur",
-    "title_date": "3 ao\u00fbt 2026",
+                 "et l'\u00e9change du code sur /token c\u00f4t\u00e9 serveur  |  "
+                 "Central seulement \u2014 pas Conseiller",
+    "title_date": "5 ao\u00fbt 2026  \u2014  mis \u00e0 jour apr\u00e8s la "
+                  "s\u00e9ance tripartite",
     "title_links": [
+        ("\u25b6  Constats de la s\u00e9ance et les huit voies", FINDINGS),
+        ("\u25b6  Liste des questions (Q1\u2013Q14) sur GitHub", QUESTIONS),
         ("\u25b6  D\u00e9mo en direct \u2014 croesus-spa.azurewebsites.net", DEMO_APP),
-        ("\u25b6  Liste des questions (Q1\u2013Q9) sur GitHub", QUESTIONS),
-        ("\u25b6  Analyse compl\u00e8te \u2014 README", README),
     ],
     "title_notes": "Cadrage : il s'agit d'une s\u00e9ance conjointe "
                    "d'\u00e9tablissement des faits, non d'un rapport de d\u00e9faut. "
                    "Le blocage d'acc\u00e8s conditionnel est correct par conception. "
-                   "Il reste une question ouverte et deux demandes qui la referment.",
+                   "La port\u00e9e se limite \u00e0 GPD Central \u2014 Conseiller "
+                   "est un produit distinct et une \u00e9valuation distincte. "
+                   "Le dire d'embl\u00e9e.",
 
     "s2_kicker": "Pourquoi nous sommes ici",
     "s2_title": "La question pos\u00e9e",
@@ -381,29 +406,34 @@ CONTENT["fr"] = {
     "s3_kicker": "O\u00f9 nous en sommes",
     "s3_title": "L'essentiel",
     "s3_bullets": [
+        [("Central est une ", False),
+         ("application multipage rendue c\u00f4t\u00e9 serveur", True),
+         (" \u2014 environ 130 pages .aspx sur .NET Framework 4.5.2. "
+          "Confirm\u00e9 par le fournisseur. Ce n'est pas une SPA.", False)],
+        [("La plateforme \u00ab spa \u00bb des trois inscriptions est donc une ", False),
+         ("erreur de type", True),
+         (", non une description. Central est d\u00e9j\u00e0 un "
+          "Backend-for-Frontend ; c'est la plateforme \u00ab web \u00bb qui le dit.",
+          False)],
+        [("Central fonctionne en production : l'\u00e9change c\u00f4t\u00e9 serveur ", False),
+         ("r\u00e9ussit", True),
+         (" alors qu'Entra devrait le refuser. Deux explications subsistent "
+          "\u2014 un en-t\u00eate Origin synth\u00e9tis\u00e9, ou une inscription "
+          "\u00ab web \u00bb non divulgu\u00e9e. ", False),
+         ("Q8 est la demande prioritaire.", True)],
+        [("L'\u00e9cart production / pr\u00e9production reste ", False),
+         ("inexpliqu\u00e9", True),
+         (" \u2014 la requ\u00eate bloqu\u00e9e ne porte aucun contexte d'appareil "
+          "dans l'un ni l'autre locataire. Desjardins peut trancher seul, cette "
+          "semaine.", False)],
         [("Le blocage d'acc\u00e8s conditionnel est ", False),
          ("correct par conception", True),
-         (". L'acc\u00e8s conditionnel r\u00e9agit \u00e0 l'origine et au contexte "
-          "de la requ\u00eate, pas au type d'octroi.", False)],
-        [("L'\u00e9change du code sur /token est d\u00e9sormais ", False),
-         ("confirm\u00e9 c\u00f4t\u00e9 serveur", True),
-         (" \u2014 une trace de navigateur de Desjardins montre /authorize mais "
-          "aucun /token. Cela corrobore Croesus.", False)],
-        [("Le type d'octroi n'est ", False), ("toujours pas \u00e9tabli", True),
-         (" \u00e0 partir d'une requ\u00eate captur\u00e9e. /token est le point de "
-          "terminaison normal pour l'\u00e9change du code et le renouvellement "
-          "\u2014 ce n'est pas une preuve d'On-Behalf-Of.", False)],
-        [("La mention \u00ab Unbound (1008) \u00bb est un ", False),
-         ("\u00e9tat de liaison d'appareil et de session", True),
-         (", non une preuve de rejeu de jeton et non un indicateur du type "
-          "d'octroi.", False)],
-        [("Prochaine \u00e9tape : r\u00e9gler la bifurcation avec ", False),
-         ("Q7 et Q8", True),
-         (". Ne rien modifier dans l'acc\u00e8s conditionnel d'ici l\u00e0.", False)],
+         (". La mention \u00ab Unbound (1008) \u00bb est un \u00e9tat de liaison, "
+          "non une preuve de rejeu ni un indicateur du type d'octroi.", False)],
     ],
     "s3_notes": "Cette diapositive est le r\u00e9sum\u00e9 ex\u00e9cutif. Si la "
                 "s\u00e9ance s'arr\u00eate apr\u00e8s cinq minutes, ce sont ces "
-                "cinq lignes qui doivent passer.",
+                "cinq lignes qui doivent passer. Port\u00e9e : Central seulement.",
 
     "s4_kicker": "Rigueur",
     "s4_title": "Ce que la preuve d\u00e9montre \u2014 et ce qu'elle ne "
@@ -459,41 +489,46 @@ CONTENT["fr"] = {
                 "confirme ce que Croesus a affirm\u00e9 \u2014 nous validons le "
                 "fournisseur, nous ne le contredisons pas.",
 
-    "s6_kicker": "Hypoth\u00e8se \u00e0 v\u00e9rifier",
-    "s6_title": "La bifurcation que cela cr\u00e9e",
-    "s6_intro": "Microsoft Entra rejette l'\u00e9change c\u00f4t\u00e9 serveur d'un "
-                "code d'autorisation \u00ab spa \u00bb avec l'erreur "
-                "AADSTS9002327. Un \u00e9change c\u00f4t\u00e9 serveur et une "
-                "inscription uniquement \u00ab spa \u00bb ne peuvent pas "
-                "coexister.",
-    "s6_a_head": "Branche A \u2014 l'\u00e9change \u00c9CHOUE",
+    "s6_kicker": "Ce qui en d\u00e9coule",
+    "s6_title": "L'erreur de type, et les deux explications restantes",
+    "s6_intro": "Entra rejette l'\u00e9change c\u00f4t\u00e9 serveur d'un code "
+                "d'autorisation \u00ab spa \u00bb avec l'erreur AADSTS9002327. "
+                "Or Central fonctionne en production : l'\u00e9change "
+                "r\u00e9ussit. Deux explications subsistent.",
+    "s6_a_head": "1 \u2014 Un en-t\u00eate Origin synth\u00e9tis\u00e9",
     "s6_a": [
-        ("Entra retourne AADSTS9002327.", True),
-        ("Un client public \u00ab spa \u00bb ne peut pas servir un \u00e9change "
-         "sans en-t\u00eate Origin. La forme d'inscription requise est absente.",
-         False),
-        ("Correctif : Croesus inscrit un client confidentiel \u00ab web \u00bb "
-         "avec un certificat.", True),
+        ("Un POST de serveur \u00e0 serveur n'envoie aucun Origin de lui-m\u00eame.",
+         True),
+        ("S'il y en a un, c'est le code applicatif qui l'ajoute \u2014 et un code "
+         "de type \u00ab spa \u00bb survit \u00e0 une r\u00e8gle qu'Entra a "
+         "\u00e9crite pour le refuser.", False),
+        ("Correctif : inscrire Central comme client confidentiel \u00ab web \u00bb. "
+         "Le prouver avec un secret client \u2014 sans biblioth\u00e8que ni "
+         "mont\u00e9e de version \u2014 puis durcir avec un certificat.", True),
     ],
-    "s6_b_head": "Branche B \u2014 l'\u00e9change R\u00c9USSIT",
+    "s6_b_head": "2 \u2014 Une inscription \u00ab web \u00bb non divulgu\u00e9e",
     "s6_b": [
-        ("Aucun AADSTS9002327 dans les journaux.", True),
-        ("Le serveur dorsal s'authentifie alors avec une inscription hors des "
-         "trois exports \u00ab spa \u00bb qui nous ont \u00e9t\u00e9 remis.", False),
+        ("Le serveur dorsal s'authentifie hors de nos trois exports.", True),
+        ("La forme est alors d\u00e9j\u00e0 correcte, et elle ne nous a "
+         "simplement jamais \u00e9t\u00e9 montr\u00e9e.", False),
         ("Correctif : Croesus divulgue l'inventaire complet (Q8) ; toute "
          "accommodation y est circonscrite.", True),
     ],
-    "s6_caveat": "R\u00e9serve : si l'acc\u00e8s conditionnel bloque le volet en "
-                 "amont, les journaux affichent plut\u00f4t un code d'\u00e9chec "
-                 "d'acc\u00e8s conditionnel \u2014 ce qui ne tranche pas la question.",
-    "s6_notes": "C'est la diapositive centrale de l'hypoth\u00e8se. Exactement une "
-                "branche est vraie, et chacune appelle une rem\u00e9diation "
-                "diff\u00e9rente et modeste. Ni l'une ni l'autre n'est une crise.",
+    "s6_caveat": "Par ailleurs, et toujours ouvert : la requ\u00eate "
+                 "bloqu\u00e9e ne porte aucun contexte d'appareil dans l'UN NI "
+                 "L'AUTRE locataire, et pourtant la production passe. C'est \u00e0 "
+                 "Desjardins de trancher, \u00e0 partir de son propre inventaire "
+                 "de strat\u00e9gies et de ses journaux de connexion.",
+    "s6_notes": "Diapositive centrale. Aucune des deux explications n'est une "
+                "crise et chacune appelle une rem\u00e9diation modeste. Q8 les "
+                "s\u00e9pare en une seule r\u00e9ponse.",
 
     "s7_kicker": "Contexte",
     "s7_title": "Pourquoi la forme de l'inscription compte",
     "s7_headers": ["", "spa (client public)", "web (client confidentiel)"],
     "s7_rows": [
+        ["D\u00e9crit", "Un client public de navigateur",
+         "Une application web rendue c\u00f4t\u00e9 serveur / BFF"],
         ["Justificatif", "Aucun \u2014 ni secret, ni certificat",
          "Secret ou certificat requis"],
         ["\u00c9change d'un code",
@@ -502,24 +537,24 @@ CONTENT["fr"] = {
          "Depuis un serveur, sans en-t\u00eate Origin"],
         ["\u00c9change c\u00f4t\u00e9 serveur", "Rejet\u00e9 : AADSTS9002327",
          "Pris en charge"],
-        ["\u00c9tendue d'API expos\u00e9e", "Aucune dans les trois exports",
-         "Requise pour On-Behalf-Of"],
-        ["Ce que nous d\u00e9tenons", "Les trois : dev-dev, dev-prod, prod-prod",
-         "Aucune divulgu\u00e9e"],
+        ["Dur\u00e9e des jetons d'actualisation",
+         "Plafonn\u00e9e \u00e0 24 heures, non glissante", "Sans ce plafond"],
+        ["Ce qu'est r\u00e9ellement Central", "Pas ceci",
+         "Ceci \u2014 environ 130 pages .aspx"],
     ],
     "s7_quote": "\u00ab Les jetons \u00e9mis pour le type de client "
                 "\u2018Single-Page Application\u2019 ne peuvent \u00eatre "
                 "\u00e9chang\u00e9s que par des requ\u00eates cross-origin. \u00bb  "
                 "\u2014 AADSTS9002327",
     "s7_notes": "Formuler le point techniquement, sans accusation : c'est une "
-                "r\u00e8gle de la plateforme, pas une opinion. Et le correctif est "
-                "peu co\u00fbteux dans les deux branches.",
+                "r\u00e8gle de la plateforme, pas une opinion. Et la premi\u00e8re "
+                "\u00e9tape du correctif est peu co\u00fbteuse.",
 
     "s7b_kicker": "Capture d'\u00e9cran",
-    "s7b_title": "La m\u00eame bifurcation, en direct dans la d\u00e9mo",
+    "s7b_title": "La m\u00eame erreur de type, en direct dans la d\u00e9mo",
     "s7b_link": "\u25b6  L'ouvrir en direct \u2014 croesus-spa.azurewebsites.net",
     "s7b_notes": "Le panneau s'affiche sans connexion : il peut donc \u00eatre "
-                 "pr\u00e9sent\u00e9 en partage d'\u00e9cran. Q7, Q8 et la liste "
+                 "pr\u00e9sent\u00e9 en partage d'\u00e9cran. Q8, Q7 et la liste "
                  "compl\u00e8te des questions sont cliquables directement depuis "
                  "la page. L'interface de la d\u00e9mo est en anglais.",
 
@@ -527,18 +562,18 @@ CONTENT["fr"] = {
     "s8_title": "Qui peut r\u00e9pondre \u00e0 quoi",
     "s8_headers": ["Question", "Qui peut r\u00e9pondre", "\u00c9tat"],
     "s8_rows": [
+        ["Inventaire complet des inscriptions et principaux de service",
+         "Croesus", "OUVERT \u2014 Q8, demande prioritaire"],
+        ["En-t\u00eate Origin sur l'appel /token c\u00f4t\u00e9 serveur",
+         "Croesus seulement \u2014 sa requ\u00eate sortante", "Ouvert \u2014 Q7"],
+        ["Quelle biblioth\u00e8que d'authentification, et mont\u00e9e .NET "
+         "pr\u00e9vue ?", "Croesus", "Ouvert \u2014 Q13"],
+        ["Port\u00e9e de l'acc\u00e8s conditionnel pour Central : prod vs "
+         "pr\u00e9prod", "Desjardins \u2014 son inventaire de strat\u00e9gies",
+         "En cours \u2014 valeur la plus \u00e9lev\u00e9e"],
         ["En-t\u00eate Origin sur un appel /token c\u00f4t\u00e9 navigateur",
          "Desjardins \u2014 outils de d\u00e9veloppement du navigateur",
          "\u00c9cart\u00e9 \u2014 aucun /token dans le HAR"],
-        ["En-t\u00eate Origin sur l'appel /token c\u00f4t\u00e9 serveur",
-         "Croesus seulement \u2014 sa requ\u00eate sortante", "Ouvert \u2014 Q7"],
-        ["Le second volet a-t-il r\u00e9ussi ou \u00e9chou\u00e9 avec "
-         "AADSTS9002327 ?",
-         "Desjardins \u2014 ses propres journaux de connexion Entra", "En cours"],
-        ["Inventaire complet des inscriptions et principaux de service",
-         "Croesus", "Ouvert \u2014 Q8"],
-        ["Plages d'IP de sortie AWS, d\u00e9finition du flux pr\u00e9vu", "Croesus",
-         "Ouvert \u2014 Q4, Q1"],
     ],
     "s8_link": "D\u00e9tails : README \u2014 qui peut capturer l'en-t\u00eate "
                "Origin de /token \u2192",
@@ -547,9 +582,19 @@ CONTENT["fr"] = {
                 "envoy\u00e9e \u00e0 Entra par l'appelant.",
 
     "s9_kicker": "Ce que nous demandons \u00e0 Croesus",
-    "s9_title": "Les demandes : Q7 et Q8",
-    "s9_q7_head": "Q7 \u2014 une capture /token caviard\u00e9e",
+    "s9_title": "Les demandes : Q8 d'abord, puis Q7",
+    "s9_q7_head": "Q8 \u2014 inventaire complet des inscriptions",
     "s9_q7": [
+        ("Chaque inscription d'application et principal de service utilis\u00e9 par "
+         "GPD Central, tous environnements confondus.", True),
+        ("Y compris toute inscription confidentielle web/API absente des trois "
+         "exports \u00ab spa \u00bb que nous d\u00e9tenons.", False),
+        ("Une seule r\u00e9ponse s\u00e9pare les deux explications restantes. "
+         "C'est la voie la plus rapide vers une configuration prise en charge.",
+         True),
+    ],
+    "s9_q8_head": "Q7 \u2014 une capture /token caviard\u00e9e",
+    "s9_q8": [
         ("Pour une transaction r\u00e9ussie et une transaction en \u00e9chec :", True),
         ("Un en-t\u00eate Origin est-il pr\u00e9sent ?  \u2022  grant_type  "
          "\u2022  client_id  \u2022  URI de redirection  \u2022  m\u00e9thode "
@@ -557,50 +602,48 @@ CONTENT["fr"] = {
         ("Indicateurs de pr\u00e9sence ou empreintes SHA-256 uniquement. Jamais de "
          "codes, jetons, secrets ou assertions bruts.", True),
     ],
-    "s9_q8_head": "Q8 \u2014 inventaire complet des inscriptions",
-    "s9_q8": [
-        ("Chaque inscription d'application et principal de service utilis\u00e9 par "
-         "GPD Central, tous environnements confondus.", True),
-        ("Y compris toute inscription confidentielle web/API absente des trois "
-         "exports \u00ab spa \u00bb que nous d\u00e9tenons.", False),
-        ("Promue au m\u00eame rang de priorit\u00e9 par la d\u00e9couverte "
-         "c\u00f4t\u00e9 serveur.", True),
-    ],
-    "s9_also": "\u00c9galement ouvertes : Q1 flux pr\u00e9vu  \u2022  Q4 plages de "
-               "sortie AWS  \u2022  Q5 conformit\u00e9 d'appareil inter-locataires  "
-               "\u2022  Q6 compatibilit\u00e9 avec la liaison de jeton  \u2022  "
-               "Q9 parit\u00e9 Central / Conseiller",
-    "s9_link": "\u25b6  Liste compl\u00e8te des questions Q1\u2013Q9 sur GitHub \u2192",
-    "s9_notes": "Insister d'embl\u00e9e sur la r\u00e8gle de caviardage. C'est ce "
-                "qui rend Q7 r\u00e9pondable par un fournisseur soucieux de "
-                "s\u00e9curit\u00e9.",
+    "s9_also": "\u00c9galement ouvertes : Q13 biblioth\u00e8que d'authentification "
+               "et feuille de route .NET  \u2022  Q10 ampleur du changement  "
+               "\u2022  Q12 acheminer les appels Entra par le VPN site \u00e0 site "
+               "existant  \u2022  Q4 plages de sortie AWS  \u2022  Q9 Conseiller "
+               "partage-t-il quoi que ce soit avec Central ?",
+    "s9_link": "\u25b6  Liste compl\u00e8te des questions Q1\u2013Q14 sur GitHub \u2192",
+    "s9_notes": "Insister d'embl\u00e9e sur la r\u00e8gle de caviardage \u2014 "
+                "c'est ce qui rend Q7 r\u00e9pondable par un fournisseur soucieux "
+                "de s\u00e9curit\u00e9. Q8 passe en t\u00eate car elle peut "
+                "lever l'ambigu\u00eft\u00e9 en une seule r\u00e9ponse.",
 
-    "s10_kicker": "Une fois la bifurcation r\u00e9gl\u00e9e",
+    "s10_kicker": "Huit voies, class\u00e9es",
     "s10_title": "\u00c9chelle de rem\u00e9diation",
     "s10_bullets": [
-        [("\u00c9tablir le type d'octroi d'abord.", True),
-         (" Aucun changement d'acc\u00e8s conditionnel, aucune liste "
-          "d'autorisation d'IP AWS et aucune obligation d'OBO tant que l'octroi "
-          "n'est pas connu.", False)],
-        [("Branche A \u2192 inscrire un client confidentiel \u00ab web \u00bb.", True),
-         (" Un certificat du c\u00f4t\u00e9 de Croesus. Le plus petit changement "
-          "possible ; aucun changement de politique chez Desjardins.", False)],
-        [("Branche B \u2192 circonscrire \u00e0 l'inscription divulgu\u00e9e.", True),
-         (" Appliquer toute accommodation \u00e0 ce principal de service "
-          "pr\u00e9cis plut\u00f4t qu'\u00e0 une large plage d'IP.", False)],
+        [("V\u00e9rifier d'abord la parit\u00e9 des locataires \u2014 Desjardins "
+          "seul.", True),
+         (" Comparer la port\u00e9e de l'acc\u00e8s conditionnel appliqu\u00e9 "
+          "\u00e0 Central en production et en pr\u00e9production. Aucune "
+          "d\u00e9pendance au fournisseur, et cela pourrait tout r\u00e9gler.", False)],
+        [("Acheminer les appels Entra par le VPN site \u00e0 site existant (Q12).",
+          True),
+         (" La requ\u00eate /token sort alors d'une adresse appartenant \u00e0 "
+          "Desjardins. Aucun changement de code chez Croesus \u2014 le levier "
+          "\u00e0 court terme le plus fort.", False)],
+        [("Corriger la forme de l'inscription \u2014 spa \u2192 web.", True),
+         (" Par \u00e9tapes : un secret client le prouve sans biblioth\u00e8que ni "
+          "mont\u00e9e de version ; un certificat le durcit ensuite. Par "
+          "locataire, donc Desjardins peut avancer en premier.", False)],
         [("\u00c9carter la confiance d'appareil comme levier.", True),
          (" \u00ab Approuver les appareils conformes \u00bb entre locataires ne "
-          "s'applique qu'\u00e0 une connexion d'invit\u00e9 B2B, et le volet "
-          "bloqu\u00e9 est un appel c\u00f4t\u00e9 serveur sans aucun contexte "
-          "d'appareil.", False)],
-        [("On-Behalf-Of est une option, pas une obligation.", True),
-         (" Cela ne s'applique que si un v\u00e9ritable interm\u00e9diaire "
-          "confidentiel est d\u00e9montr\u00e9 \u2014 ce qui exige une "
-          "\u00e9tendue d'API expos\u00e9e et un justificatif.", False)],
+          "s'applique qu'\u00e0 une connexion d'invit\u00e9 B2B. Les postes ne "
+          "joignent qu'un seul locataire \u2014 la production \u2014 donc en "
+          "pr\u00e9production \u00ab exiger un appareil conforme \u00bb est "
+          "insatisfiable, et non simplement s\u00e9v\u00e8re.", False)],
+        [("Un emplacement nomm\u00e9 est une condition, pas un octroi.", True),
+         (" Les contr\u00f4les d'octroi se combinent avec ET : un emplacement "
+          "approuv\u00e9 ne satisfait pas une exigence d'appareil conforme. "
+          "On-Behalf-Of reste une option, pas une obligation.", False)],
     ],
-    "s10_notes": "Le message : chaque branche a un correctif modeste et "
-                 "r\u00e9versible. Personne n'a besoin d'une refonte, et "
-                 "Desjardins n'a pas \u00e0 affaiblir son acc\u00e8s conditionnel. "
+    "s10_notes": "Le message : chaque voie est modeste et r\u00e9versible. "
+                 "Personne n'a besoin d'une refonte, et Desjardins n'a pas "
+                 "\u00e0 affaiblir son acc\u00e8s conditionnel. "
                  "Sur la confiance d'appareil \u2014 cr\u00e9diter Mathieu Santerre "
                  "pour la correction : les param\u00e8tres de confiance entrante "
                  "honorent une revendication d'appareil port\u00e9e par le jeton "
@@ -619,9 +662,9 @@ CONTENT["fr"] = {
          (" un rejeu de jeton vers Microsoft Graph est rejet\u00e9 sur l'audience, "
           "tandis qu'un v\u00e9ritable \u00e9change On-Behalf-Of \u00e9met un "
           "jeton distinct, avec sa propre audience.", False)],
-        [("La bifurcation d'inscription :", True),
+        [("L'erreur de type d'inscription :", True),
          (" un panneau explique \u00ab spa \u00bb contre \u00ab web \u00bb et le "
-          "comportement AADSTS9002327, avec des liens directs vers Q7 et Q8.",
+          "comportement AADSTS9002327, avec des liens directs vers Q8 et Q7.",
           False)],
         [("Inspecteur de jetons et panneau de preuve :", True),
          (" les revendications d\u00e9cod\u00e9es montrent une liaison d'audience "
@@ -643,38 +686,43 @@ CONTENT["fr"] = {
     ],
     "s11_notes": "Ordre de la d\u00e9mo : se connecter, appeler l'API, montrer le "
                  "panneau de preuve, puis le bouton de rejeu, puis faire "
-                 "d\u00e9filer jusqu'au panneau de bifurcation d'inscription et "
-                 "cliquer vers Q7/Q8.",
+                 "d\u00e9filer jusqu'au panneau d'erreur de type d'inscription et "
+                 "cliquer vers Q8/Q7.",
 
     "s12_kicker": "En sortant de cette s\u00e9ance",
     "s12_title": "Prochaines \u00e9tapes et responsables",
     "s12_headers": ["#", "Action", "Responsable", "Referme"],
     "s12_rows": [
-        ["1", "Interroger les journaux de connexion Entra sur le volet "
-              "c\u00f4t\u00e9 serveur : succ\u00e8s ou AADSTS9002327",
-         "Desjardins", "R\u00e9duit la bifurcation sans le fournisseur"],
-        ["2", "Fournir une capture /token caviard\u00e9e (empreintes ou "
+        ["1", "Comparer la port\u00e9e de l'acc\u00e8s conditionnel pour Central "
+              "entre production et pr\u00e9production",
+         "Desjardins", "Peut tout r\u00e9gler \u2014 sans attendre le fournisseur"],
+        ["2", "Fournir l'inventaire complet des inscriptions et principaux de "
+              "service", "Croesus", "Q8 \u2014 prioritaire"],
+        ["3", "Fournir une capture /token caviard\u00e9e (empreintes ou "
               "pr\u00e9sence seulement)", "Croesus", "Q7"],
-        ["3", "Fournir l'inventaire complet des inscriptions et principaux de "
-              "service", "Croesus", "Q8"],
-        ["4", "Fournir les plages d'IP de sortie AWS et la d\u00e9finition du flux "
-              "pr\u00e9vu", "Croesus", "Q4, Q1"],
-        ["5", "Choisir la rem\u00e9diation minimale une fois la branche connue",
-         "Conjoint", "L'escalade"],
+        ["4", "Confirmer la biblioth\u00e8que d'authentification et toute "
+              "mont\u00e9e de version .NET pr\u00e9vue", "Croesus", "Q13"],
+        ["5", "\u00c9valuer l'acheminement des appels Entra par le VPN site "
+              "\u00e0 site existant", "Conjoint", "Q12 \u2014 d\u00e9blocage le "
+              "plus rapide"],
     ],
     "s12_guardrail": "Garde-fou d'ici l\u00e0 : ne pas modifier l'acc\u00e8s "
                      "conditionnel, ne pas mettre les IP de sortie AWS en liste "
-                     "d'autorisation, et ne pas imposer On-Behalf-Of.",
+                     "d'autorisation, ne pas imposer On-Behalf-Of, et ne rien "
+                     "g\u00e9n\u00e9raliser \u00e0 Conseiller.",
     "s12_notes": "Conclure en redisant le garde-fou. Il prot\u00e8ge les deux "
                  "parties : aucun rel\u00e2chement pr\u00e9matur\u00e9 de "
                  "politique, aucune refonte pr\u00e9matur\u00e9e du c\u00f4t\u00e9 "
-                 "du fournisseur.",
+                 "du fournisseur. L'\u00e9l\u00e9ment 1 nous appartient et ne "
+                 "d\u00e9pend de personne.",
 
     "s13_kicker": "Tout ce qui est r\u00e9f\u00e9renc\u00e9 dans cette "
                   "pr\u00e9sentation",
     "s13_title": "Liens",
     "s13_links": [
-        ("Liste des questions Q1\u2013Q9 (dossier d'escalade)", QUESTIONS),
+        ("Constats de la s\u00e9ance et les huit voies \u2014 COMMENCER ICI", FINDINGS),
+        ("Voies et contournements (R1\u2013R8)", ROUTES),
+        ("Liste des questions Q1\u2013Q14 (dossier d'escalade)", QUESTIONS),
         ("Dossier d'escalade \u2014 document complet", PACKET),
         ("Analyse compl\u00e8te \u2014 README", README),
         ("Qui peut capturer l'en-t\u00eate Origin de /token", ORIGIN_SECTION),
@@ -682,7 +730,6 @@ CONTENT["fr"] = {
          NARRATIVE),
         ("Guide de d\u00e9monstration On-Behalf-Of", DEMO_GUIDE),
         ("Requ\u00eates KQL de preuve", KQL),
-        ("D\u00e9p\u00f4t \u2014 devopsabcs-engineering/croesus", REPO),
         ("Application de d\u00e9monstration en direct", DEMO_APP),
     ],
     "s13_notes": "Partager la pr\u00e9sentation elle-m\u00eame \u2014 tous les "

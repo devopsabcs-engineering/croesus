@@ -2,7 +2,7 @@
 title: Croesus OBO Evidence Narrative
 description: Maps the Desjardins escalation-packet questions to the concrete evidence the mock OBO demo produces and explains why audience-binding is the headline proof
 author: Croesus Demo Team
-ms.date: 2026-07-28
+ms.date: 2026-08-05
 ms.topic: concept
 keywords:
   - obo
@@ -52,15 +52,20 @@ The audience boundary carries the argument on its own. Two distinct audiences an
 
 ## Registration correctness
 
-The three exported registrations (`dev-dev`, `dev-prod`, `prod-prod`) declare their redirect URIs under the Microsoft Entra `spa` (public-client) platform node, with no client secret, no certificate, and no exposed API scope. That shape is correct for a browser-driven authorization-code redemption, where the browser redeems the code cross-origin with an `Origin` header. It is not correct for a literal server-side (no-`Origin`) redemption.
+> [!IMPORTANT]
+> Updated 2026-08-05 after the three-way session with Croesus. **Scope: GPD Central only.** The authoritative current analysis is [../assets/croesus-3way-session-findings.md](../assets/croesus-3way-session-findings.md).
 
-Microsoft Entra enforces this at the token endpoint. A `spa` authorization code may only be redeemed by a cross-origin browser request; a plain server-side redemption is rejected:
+The three exported registrations (`dev-dev`, `dev-prod`, `prod-prod`) declare their redirect URIs under the Microsoft Entra `spa` (public-client) platform node, with no client secret, no certificate, and no exposed API scope. That shape is correct for a browser-driven authorization-code redemption, where the browser redeems the code cross-origin with an `Origin` header.
+
+**Central is not that application.** Croesus has confirmed GPD Central is a server-rendered multi-page ASP.NET application on .NET Framework 4.5.2, roughly 130 `.aspx` pages, and that the `/token` redemption runs on the backend. A Desjardins browser trace corroborates it: the capture contains only `/oauth2/v2.0/authorize` and no `/oauth2/v2.0/token`. The `spa` platform is therefore a **type mismatch** rather than a description. A server-rendered application that redeems the code server-side, keeps the tokens server-side, and hands the browser only a session cookie **is** a Backend-for-Frontend, and the Entra `web` platform is the one that describes it.
+
+Microsoft Entra enforces the distinction at the token endpoint. A `spa` authorization code may only be redeemed by a cross-origin browser request; a plain server-side redemption is rejected:
 
 > Tokens issued for the 'Single-Page Application' client-type may only be redeemed via cross-origin requests. (`AADSTS9002327`)
 
-So "mandatory server-side `/token` call" and a `spa`-only registration cannot both be literally true unless the redemption carries a browser `Origin` header. If a real backend must redeem the code server to server, the supported registration is a `web`-platform confidential client with a certificate credential, not a `spa` public client. The decisive artifact is a single captured `/token` request showing whether an `Origin` header is present; that one fact separates browser redemption from server redemption.
+Central nonetheless works in Prod, so the server-side redemption is **succeeding** against registrations that should reject it. Exactly two explanations survive: the backend synthesises an `Origin` header on a server-to-server call, or it authenticates as a **`web` registration outside the three exports we hold**. The decisive artifact is a single captured `/token` request showing whether an `Origin` header is present, together with the full app-registration inventory. Either way, the supported destination is the same: a `web`-platform confidential client, provable first with a client secret (which .NET Framework 4.5.2 can do with no library change) and hardened afterwards with a certificate credential.
 
-One guard belongs alongside this verdict: `1008` is out of Token Protection scope for a browser-to-Graph flow and is not replay evidence. Token Protection supports native applications only and does not cover Microsoft Graph, so an `Unbound (1008)` line against a browser sign-in that later reaches Graph is expected and benign. Keep that statement in view so the analysis does not drift back to treating `1008` as proof of token replay.
+One guard belongs alongside this verdict: `1008` is out of Token Protection scope for any flow reaching Microsoft Graph and is not replay evidence. Token Protection supports native applications only and does not cover Microsoft Graph, so an `Unbound (1008)` line against a sign-in that later reaches Graph is expected and benign. Keep that statement in view so the analysis does not drift back to treating `1008` as proof of token replay.
 
 ## Reversibility and residual token validity
 

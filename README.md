@@ -1,23 +1,32 @@
 # Croesus / GPD Central — Entra App Registration & SSO Conditional Access Analysis
 
-> [!IMPORTANT]
-> **Step 1 is done: the redemption is confirmed server-side.** A browser HAR captured by Desjardins (Mathieu Santerre) during a real Central sign-in contains **only `/oauth2/v2.0/authorize` and no `/oauth2/v2.0/token`**. The authorization code leaves the browser, but it is redeemed **off the user's machine** — which **corroborates the vendor's statement** that the `/token` call runs on the Croesus AWS backend. Desjardins can no longer capture the `Origin` header itself, because the request never touches a Desjardins browser.
->
-> **The open item is now a fork, not an unknown.** A server-side redemption against a **`spa` public-client** registration should be rejected by Entra with **`AADSTS9002327`**. So exactly one of these is true: (a) the redemption **fails**, and Central needs a **`web` confidential-client** registration; or (b) the redemption **succeeds**, which means the backend authenticates as a **confidential registration nobody has shown us** — beyond the three `spa` exports we hold.
->
-> **Who does what next:** Desjardins can still test the fork alone by reading its **own Entra sign-in logs** for the server-side leg (see [Who can capture the `/token` `Origin` header](#who-can-capture-the-token-origin-header)). The raw `/token` request now lives exclusively with **Croesus (Olivier Leblanc)**, so send the [Croesus escalation packet](assets/croesus-escalation-packet.md) and ask **Q7** (the redacted `/token` capture) **and Q8** (complete app-registration and service-principal inventory), which this finding promotes to co-primary. Presence indicators and SHA-256 hashes only, never raw tokens or secrets.
->
-> **Guardrail:** until the grant is classified, do not change Conditional Access, allowlist AWS IPs, or mandate OBO.
+## ➤ Start here: [Three-way session findings and available routes](assets/croesus-3way-session-findings.md)
 
-Analysis of the **Desjardins** "GPD Central" (Central GPD) integration with the **Croesus** SaaS platform. The work answers one customer question: the second, non-interactive sign-in arriving from the Croesus AWS backend — blocked by Conditional Access (CA) in non-prod — is this **expected OAuth behaviour** or a **misconfiguration**, and should the fix be **internal (Option A)** or **escalated to the vendor (Option B)**?
+> [!IMPORTANT]
+> **That document is the core artifact and it is self-contained.** It carries every finding established with Croesus and Desjardins, what each one changed, what remains open and who owns it, and all eight remediation routes with their size, owner, and durability. Read it alone and you are current.
+>
+> **Scope: GPD Central only. Conseiller is a separate product and a separate assessment.**
+>
+> **Headline:** Central is a **server-rendered multi-page ASP.NET application on .NET Framework 4.5.2**, roughly 130 `.aspx` pages. It is not a browser SPA. The `spa` platform on the three app registrations is therefore a **type mismatch**, not a description of the application. Central is already a Backend-for-Frontend; the registration simply does not declare it.
+
+The sections below record how that conclusion was reached, and predate the core document in places.
+
+> [!NOTE]
+> **The redemption is confirmed server-side.** A browser HAR captured by Desjardins (Mathieu Santerre) during a real Central sign-in contains **only `/oauth2/v2.0/authorize` and no `/oauth2/v2.0/token`**. The authorization code leaves the browser, but it is redeemed **off the user's machine**, which **corroborates the vendor's statement** that the `/token` call runs on the Croesus AWS backend. Desjardins cannot capture the `Origin` header itself, because the request never touches a Desjardins browser.
+>
+> **Guardrail:** until the registration shape and the grant are settled, do not change Conditional Access, allowlist AWS IPs, or mandate OBO.
+
+Analysis of the **Desjardins** "GPD Central" (Central GPD) integration with the **Croesus** SaaS platform. The work answers one customer question: the second, non-interactive sign-in arriving from the Croesus AWS backend, blocked by Conditional Access (CA) in non-prod, is this **expected OAuth behaviour** or a **misconfiguration**, and should the fix be **internal** or **escalated to the vendor**?
 
 ## Bottom line
 
 - The **Conditional Access block is correct-by-design** (Zero Trust), not a Desjardins misconfiguration.
-- The `/token` redemption is **confirmed to run server-side**, not in the browser: a Desjardins browser HAR of a real Central sign-in shows `/authorize` but **no `/token`**. This corroborates the vendor's account and rules out the browser-redemption hypothesis for this capture.
-- The grant behind the second, non-interactive sign-in is **still not classified from a captured request**. The confirmed server-side redemption now creates a testable fork: against a `spa` public client it should fail with `AADSTS9002327`; if it succeeds instead, an **undisclosed confidential registration** must exist beyond the three `spa` exports we hold.
+- Central is a **server-rendered multi-page application**, vendor-confirmed. The `spa` registration platform describes an application Central is not.
+- The `/token` redemption is **confirmed server-side**, corroborated by the Desjardins HAR.
+- Entra rejects a plain server-side redemption of a `spa` code with `AADSTS9002327`. **Central works in Prod**, so that redemption is **succeeding**. Either the backend **synthesises an `Origin` header**, or an **undisclosed `web` registration** exists. Resolving that is **Q8**, now the primary ask.
+- **The prod/non-prod split is not yet explained.** The blocked leg carries no device context in *either* tenant, so device posture alone cannot account for Prod passing and Dev failing. Either the blocked leg is not the one we believe, or the two tenants scope Conditional Access differently for Central. **Desjardins can settle this alone**, and it is the highest-value next action.
 - The `1008` "unbound" line means the client is **not integrated with the platform broker** (Windows Account Manager), a device- and session-binding status. It does not identify the grant or prove that an access token was replayed.
-- **Recommended path: resolve the fork.** Desjardins reads its own sign-in logs for the server-side leg, and Croesus supplies the redacted `/token` capture (Q7) plus the full registration inventory (Q8). Then choose the minimum remediation. OBO is one option, appropriate only if a genuine middle-tier requirement is proven; it is not required for ordinary code redemption.
+- **Separate finding:** .NET Framework 4.5.2 has been **out of support since April 2022**. That belongs in vendor risk review on its own track, not as leverage in this escalation.
 
 ## Security findings
 
@@ -70,44 +79,47 @@ Desjardins created and owns the three app registrations and the Entra tenant; Cr
 
 The `/token` endpoint is **Microsoft Entra's** (`login.microsoftonline.com/{tenant}/oauth2/v2.0/token`). The `Origin` header is an HTTP header on the request **sent to** that endpoint, so it physically exists only at the two ends of that one hop: the **caller** (Croesus's server code, or the browser Croesus serves) and **Microsoft Entra**, which receives it. Entra does **not** surface the raw `Origin` header as a field in the tenant sign-in logs. Owning the app registration lets Desjardins read the sign-in log entry and change the registration — it does not let them read the raw header off Croesus's request.
 
-The practical catch: whether Desjardins can capture it alone depends on the very thing under test.
+The practical catch: whether Desjardins can capture it alone depended on the very thing under test, and that is now settled.
 
-- If the redemption runs in the **user's browser** (the normal `spa` pattern), the request passes through the Desjardins user's machine, so a Desjardins user **can capture it directly** with browser DevTools — the browser sets `Origin` automatically. No vendor needed.
-- If the redemption runs **server-side at Croesus** (Olivier's stated claim), it never touches the Desjardins user's browser or network, so **only Croesus can capture it**.
+- If the redemption ran in the **user's browser** (the normal `spa` pattern), the request would pass through the Desjardins user's machine, so a Desjardins user could capture it with browser DevTools. **Ruled out.** Central is a server-rendered multi-page application and the HAR contains no `/token`.
+- The redemption runs **server-side at Croesus**, so it never touches the Desjardins user's browser or network. **Only Croesus can capture it.**
 
 ### Self-verify sequence (cheapest first)
 
 1. **Browser DevTools (Desjardins, no vendor). ✅ Done — redemption confirmed server-side.** Have a Desjardins user sign in to Central with DevTools open (Network tab, preserve log) and filter for a POST to `oauth2/v2.0/token`. **Result:** the captured HAR contains **only `/oauth2/v2.0/authorize`** and **no `/oauth2/v2.0/token`**. The code leaves the browser but is redeemed elsewhere, so the redemption is **server-side**, corroborating the vendor's account. Consequence: the `Origin` header can no longer be observed by Desjardins and must come from Croesus. A browser HAR contains real codes and tokens, so treat it as sensitive: record only "`Origin` present: yes/no", never share the raw trace.
-2. **Entra sign-in logs (Desjardins, no vendor). ⏳ Next.** Entra's behaviour is deterministic: a `spa`-platform client can only redeem an authorization code from a request carrying `Origin`, and rejects a plain server-side redemption with `AADSTS9002327`. So the outcome in the tenant logs is strong indirect proof. Query the non-interactive second leg (filter on the AWS IPs `3.97.32.113` / `3.99.119.124`, or by app/resource) and read the result: a failure with `AADSTS9002327` proves a server-side, no-`Origin` redemption against a `spa` client (which then needs a `web` confidential-client registration); a success implies a confidential registration we have not been shown (**Q8**). Caveat: if Conditional Access blocks the leg first, the logs show a CA failure code instead, which is expected-by-design and does not settle the `spa`/`Origin` question.
-3. **Escalate to Croesus. ⏳ Now justified.** Step 1 confirmed the call is server-side, so the header lives exclusively on Croesus's machine and only they can produce it. Request **Q7** (redacted `/token`: `Origin` presence, `grant_type`, client-auth method, audience) **and Q8** (complete registration and service-principal inventory) from the [escalation packet](assets/croesus-escalation-packet.md) — presence indicators or SHA-256 hashes only.
+2. **Entra sign-in logs (Desjardins, no vendor). ⏳ Next.** Entra's behaviour is deterministic: a `spa`-platform client can only redeem an authorization code from a request carrying `Origin`, and rejects a plain server-side redemption with `AADSTS9002327`. So the outcome in the tenant logs is strong indirect proof. Query the non-interactive second leg (filter on the AWS IPs `3.97.32.113` / `3.99.119.124`, or by app/resource) and read the result: a failure with `AADSTS9002327` proves a server-side, no-`Origin` redemption against a `spa` client; a success implies either a synthesised `Origin` or a confidential registration we have not been shown (**Q8**). While you are in the logs, **also compare how Prod and non-prod scope Conditional Access for Central** — that comparison may explain the whole split on its own. Caveat: if Conditional Access blocks the leg first, the logs show a CA failure code instead, which is expected-by-design and does not settle the `spa`/`Origin` question.
+3. **Escalate to Croesus. ⏳ Now justified.** Step 1 confirmed the call is server-side, so the header lives exclusively on Croesus's machine and only they can produce it. Request **Q8** (complete registration and service-principal inventory, now the primary ask), **Q7** (redacted `/token`: `Origin` presence, `grant_type`, client-auth method, audience), **Q12** (can Central route its Entra calls over the existing site-to-site VPN), and **Q13** (which auth library) from the [escalation packet](assets/croesus-escalation-packet.md) — presence indicators or SHA-256 hashes only.
 
-### The fork this creates
+### What this leaves open
 
-A server-side redemption and a `spa`-only registration cannot both hold. Exactly one branch is true, and each has a different remediation.
+A server-side redemption and a `spa`-only registration cannot both hold, and yet Prod works. That narrows the possibilities to two, and both are Croesus's to resolve.
 
-| Branch | Observation | What it means | Minimum fix |
-| --- | --- | --- | --- |
-| A | Server-side `/token` **fails** with `AADSTS9002327` | The `spa` public client cannot service a no-`Origin` redemption | Croesus registers a **`web` confidential client** with a certificate |
-| B | Server-side `/token` **succeeds** | The backend authenticates as a registration outside the three `spa` exports | Croesus discloses the full inventory (**Q8**); scope the accommodation to it |
+| Possibility | What it means | Minimum fix |
+| --- | --- | --- |
+| The backend sends a **synthesised `Origin` header** | Entra is tolerating a request its `spa` rules are written to reject, and Central depends on that continuing | Croesus moves to a **`web` confidential client** (R4) |
+| An **undisclosed `web` registration** exists | The backend authenticates as something outside the three `spa` exports we hold | Croesus discloses the full inventory (**Q8**); scope any accommodation to it |
+
+**Q8 is therefore the primary ask.** The full route list, with owners and sizing, is in the [core findings document](assets/croesus-3way-session-findings.md#4-routes-and-workarounds).
 
 | Question | Who can answer |
 | --- | --- |
 | Raw `Origin` header on a **server-side** `/token` call | Croesus only (their outbound request; never reaches Desjardins users) |
 | `Origin` header on a **browser-side** `/token` call | Desjardins directly, via browser DevTools — ruled out by the Step 1 HAR |
 | Did the second-leg redemption succeed or fail with `AADSTS9002327`? | Desjardins, from its own Entra sign-in logs |
-| Intended flow definition and AWS egress ranges | Croesus |
+| Whether Prod and non-prod scope Conditional Access differently for Central | Desjardins, from its own policy inventory |
+| Intended flow definition, registration inventory, AWS egress ranges, auth library | Croesus |
 
 ## How to fix it properly
 
-The `1008` "unbound" signal means the second-hop client is not integrated with the platform broker (Windows Account Manager). It is a binding status, not a classification of the grant. The durable path is to classify the grant from one captured request, then apply the minimum control that fits the confirmed flow.
+Two things must be settled before choosing a remedy: the **registration shape** (is Central declared as what it actually is?) and the **grant** (what is the blocked call?). The full route list with owners, sizing, and durability lives in the [core findings document](assets/croesus-3way-session-findings.md#4-routes-and-workarounds). In summary:
 
-Recommended sequence:
-
-1. Escalate to the vendor first (Option B). Ask Croesus for the authoritative flow definition and the AWS egress IP ranges, and confirm whether the `/token` POST is a browser authorization-code redemption (with an `Origin` header) or a server-side call.
-2. Classify the grant from one correlated transaction. An `authorization_code` grant with a matching `code_verifier`, followed by Graph use of the newly returned token, supports the authorization-code explanation. An `assertion` with `requested_token_use=on_behalf_of` would establish OBO. The same bearer fingerprint crossing the boundary without a new issuance would support relay or replay.
-3. Apply the minimum remediation for the confirmed flow. If a genuine middle-tier requirement is proven, standards On-Behalf-Of is one option: the API registration carries a confidential-client credential (a certificate in Key Vault), exposes an `access_as_user` scope, and pre-authorizes the SPA so the middle tier mints a fresh, audience-bound Graph token instead of forwarding the user's token. The mock API in this repository demonstrates that shape. OBO is not required for ordinary authorization-code redemption.
-4. Do not count on cross-tenant "Trust compliant devices" here. The cross-tenant access **inbound trust settings** only take effect on a **B2B guest** sign-in, where they instruct the resource tenant to honour a device-compliance claim carried in the guest's token from their home tenant. They cannot make a Prod-tenant-compliant device count as compliant when the user signs in with a **non-prod tenant account** from that device, because that sign-in is native to the non-prod tenant and is evaluated against its own device registry. The blocked leg is also a **non-interactive server-side call from AWS**, which carries no device context at all, so no device-trust setting can help it. (Correction supplied by Desjardins, 2026-08-05.)
-5. Enforce token binding with Conditional Access only where it applies. Keep any Token Protection policy in report-only until the flow is classified. Token Protection is native-app-only and does not cover Microsoft Graph, so it does not bind a browser-to-Graph hop.
+1. **Check tenant parity first (Desjardins alone).** Compare the Conditional Access policies applied to Central in Prod and in non-prod. The blocked leg carries no device context in either tenant, so device posture cannot by itself explain Prod passing and Dev failing. If the two tenants scope CA differently, the fix is internal, immediate, and needs nothing from Croesus.
+2. **Route Entra calls over the existing site-to-site VPN (Q12).** If the Central backend reaches `login.microsoftonline.com` through the tunnel or a Desjardins-side forward proxy, the `/token` request egresses from a **Desjardins-owned address**. That turns "allowlist a vendor's cloud IPs" into "recognise our own network", and needs **no change to Croesus application code**. It is the strongest short-term lever.
+3. **Correct the registration shape (Q8, Q10, Q13).** Central is already a Backend-for-Frontend, so the `web` platform describes it and `spa` does not. Stage it: a **client secret** proves the shape with no library and no framework uplift, and a certificate hardens it later. Registrations are per customer tenant, so this is per-tenant and stageable behind a config flag rather than a big-bang change affecting Croesus's other customers.
+4. **Do not count on cross-tenant device trust.** The cross-tenant access **inbound trust settings** only take effect on a **B2B guest** sign-in, where they instruct the resource tenant to honour a device-compliance claim carried in the guest's token from their home tenant. They cannot make a Prod-compliant device count as compliant when the user signs in with a **non-prod tenant account**, because that sign-in is native to the non-prod tenant and is evaluated against its own device registry. Desjardins workstations can join only one tenant, and that tenant is Prod, so in non-prod they are unknown devices and "require compliant device" is an **unsatisfiable** grant for this population. The blocked server-side leg carries no device context at all. (Correction supplied by Desjardins, 2026-08-05.)
+5. **Remember what a named location can and cannot do.** Grant controls combine with **AND**, so a trusted named location does not satisfy a "require compliant device" grant. Location helps only when used as a **condition** that excludes the traffic from the policy's scope.
+6. **On-Behalf-Of is an option, not a requirement.** It applies only if a genuine confidential middle tier is proven, which requires an exposed API scope and a credential. It is not required for ordinary authorization-code redemption. The mock API in this repository demonstrates the shape for the case where OBO is the confirmed fix.
+7. **Keep Token Protection in report-only.** It is native-app-only and does not cover Microsoft Graph, so it does not bind a browser-to-Graph hop.
 
 The five pieces a standards OBO requires, for the case where OBO is the confirmed fix, are listed under [What a real OBO needs that the replay lacks](#what-a-real-obo-needs-that-the-replay-lacks).
 
@@ -115,6 +127,7 @@ The five pieces a standards OBO requires, for the case where OBO is the confirme
 
 | Document | Purpose |
 | --- | --- |
+| **[Three-way session findings and routes](assets/croesus-3way-session-findings.md)** | **Start here.** All findings from the Desjardins / Croesus / Microsoft session, what they changed, what is open and who owns it, and all eight remediation routes. |
 | [Analysis & findings report](assets/app-registration-analysis-findings.md) | Full analysis: verified registration matrix, naming reconciliation, security findings, determination, and Option A vs Option B recommendation. |
 | [Croesus escalation packet](assets/croesus-escalation-packet.md) | Vendor questions and evidence requests to confirm the intended flow and AWS egress ranges. |
 | [Verification guide](assets/app-registration-verification.md) | Operator-run commands to close evidence gaps (owners, admin-consent, tenant IDs, sign-in logs). |
@@ -132,7 +145,7 @@ The five pieces a standards OBO requires, for the case where OBO is the confirme
 
 ## Mock Croesus SaaS OBO demo
 
-The analysis above concluded that the three production registrations cannot perform a standards-compliant On-Behalf-Of (OBO) exchange: they hold no credential and expose no API scope. They are `spa`-platform public clients, consistent with browser authorization-code redemption; the grant behind the second sign-in is not yet classified from a captured request, so it is not asserted here as a replay. This demo builds the OBO shape end-to-end as a reference so we can show Desjardins what a standards OBO looks like and how to prove it, without claiming it reconstructs Croesus production.
+The analysis above concluded that the three production registrations cannot perform a standards-compliant On-Behalf-Of (OBO) exchange: they hold no credential and expose no API scope. They are declared as `spa`-platform public clients, which we now know **misdescribes Central** (a server-rendered multi-page application), and the grant behind the second sign-in is not yet classified from a captured request, so it is not asserted here as a replay. This demo builds the OBO shape end-to-end as a reference so we can show Desjardins what a standards OBO looks like and how to prove it, without claiming it reconstructs Croesus production.
 
 We frame the demo as the vendor would: we are the Croesus vendor providing a setup guide, and Desjardins stands up the two app registrations in their own tenant.
 
@@ -173,11 +186,12 @@ The broken baseline in [assets/app-registration-analysis-findings.md](assets/app
 
 ### App registration comparison: mock versus real
 
-The demo runs two registrations precisely because the three real Croesus registrations lack the pieces a standards OBO needs. The real environments (`dev-dev`, `dev-prod`, `prod-prod`) share one minimal SPA-only shape; the mock splits the work into a public SPA and a credentialed API.
+The demo runs two registrations precisely because the three real Croesus registrations lack the pieces a standards OBO needs. The three real environments (`dev-dev`, `dev-prod`, `prod-prod`) share one minimal `spa`-declared shape; the mock splits the work into a public SPA and a credentialed API.
 
-| Field | Mock SPA | Mock API | Real SPA (all three environments) |
+| Field | Mock SPA | Mock API | Real registrations (all three environments) |
 | --- | --- | --- | --- |
-| Role in flow | Public client (front end) | Confidential middle tier | Single SPA, no middle tier |
+| Role in flow | Public client (front end) | Confidential middle tier | Declared as a single public client |
+| Actual application | React SPA | ASP.NET Core API | **Server-rendered `.aspx` MPA** (mismatch) |
 | signInAudience | AzureADMyOrg | AzureADMyOrg | AzureADMyOrg |
 | Platform | SPA (auth code + PKCE) | API / daemon | SPA |
 | Client secret | None | None | None |
