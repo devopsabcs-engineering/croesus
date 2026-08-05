@@ -406,14 +406,20 @@ bullets(s, [
     [("Branch B \u2192 scope to the disclosed registration.", True),
      (" Apply any accommodation to that specific service principal rather than "
       "to a broad IP range.", False)],
-    [("Prefer B2B \u2018Trust compliant devices\u2019 over a broad CA exception.", True),
-     (" It preserves the device-compliance signal instead of discarding it.", False)],
+    [("Rule out device trust as the lever.", True),
+     (" Cross-tenant \u2018Trust compliant devices\u2019 only fires on a B2B guest "
+      "sign-in, and the blocked leg is a server-side call with no device "
+      "context at all.", False)],
     [("On-Behalf-Of is an option, not a requirement.", True),
      (" It applies only if a genuine confidential middle tier is proven \u2014 "
       "which requires an exposed API scope and a credential.", False)],
 ], y=2.1, size=17, gap=14)
 notes(s, "The point: every branch has a small, reversible fix. Nobody needs a "
-         "re-architecture, and Desjardins does not need to weaken CA.")
+         "re-architecture, and Desjardins does not need to weaken CA. On device "
+         "trust \u2014 credit Mathieu Santerre for the correction: the inbound "
+         "trust settings honour a device claim carried in a guest's token from "
+         "their home tenant, so they cannot bridge Prod device state into a "
+         "native non-prod sign-in.")
 
 # ---------------------------------------------------------------- SLIDE 11
 s = new_slide()

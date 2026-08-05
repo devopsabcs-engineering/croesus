@@ -23,7 +23,7 @@
 
 **Bottom line:** the CA denial is expected and correct. The second sign-in is driven by the vendor's server-side design. Per the revised position above, the `1008` "unbound" status is a device/broker-binding signal (client not integrated with WAM), not proof of token replay, and does not identify the grant; the SPA registrations are consistent with an authorization-code-with-PKCE redemption. What is certain is that the registrations **cannot** perform a standards OBO. The open item is the authoritative flow definition, owed by the vendor (and held in the RMS-locked OAuth integration report we could not open).
 
-**Recommended path:** **Option B first** (escalate to Croesus for the authoritative flow definition + AWS egress IP ranges), then a **scoped Option A** internal accommodation — preferring Entra B2B "Trust compliant devices" to fix the cross-tenant root cause, with a scoped CA trusted-location exception + MFA as the lower-assurance alternative. Do **not** frame the CA policy as broken.
+**Recommended path:** **Option B first** (escalate to Croesus for the authoritative flow definition + AWS egress IP ranges), then a **scoped Option A** internal accommodation — a CA exception scoped to the non-prod application, with compensating controls, alongside a corrected registration shape on the vendor side. Entra B2B "Trust compliant devices" is **not** available for this scenario (see the correction in section 5). Do **not** frame the CA policy as broken.
 
 ---
 
@@ -124,6 +124,9 @@ Separate three distinct facts:
 
 Devices are compliant/managed in the **Prod** tenant (Intune / hybrid join), but non-prod Croesus authenticates in the **Dev** tenant. A device can be compliant in only one tenant, so a Prod-compliant device reads as non-compliant/unknown in the Dev tenant. The Croesus backend's server-side token step originates from an untrusted AWS IP with no device context, so device-based CA in the Dev tenant correctly fails the second event. In `prod-prod`, the same step succeeds because device + tenant + trusted-location conditions align.
 
+> [!NOTE]
+> **This gap is real but not closable by a tenant setting** (Desjardins correction, 2026-08-05). Cross-tenant "Trust compliant devices" only honours a device claim presented by a **B2B guest** from their home tenant; it does not bridge device state into a native Dev-tenant sign-in. And because the blocked event is a **server-side call with no device context whatsoever**, device trust could not have unblocked it under any configuration. Treat the registration shape and a scoped, app-specific CA exception as the actionable levers instead.
+
 ### Raw sign-in log evidence (prod-prod scenario)
 
 | Field | Sign-in #1 (interactive) | Sign-in #2 (second, server-side event) |
@@ -158,8 +161,12 @@ Obtain the authoritative flow definition because the definitive evidence is RMS-
 
 ### Step 2 — Option A: the most proportionate internal accommodation
 
-* **Preferred lever — Entra B2B "Trust compliant devices"** (advisory PDF Option 2): have the Dev tenant honour the Prod tenant's device-compliance claim. **High security; addresses the root cause directly.**
-* **Alternative lever — scoped CA trusted-location exception** (advisory PDF Option 1): add Croesus AWS egress IPs as a trusted location **for the non-prod app only**, with MFA as a compensating control. Lower complexity, lower assurance.
+> [!IMPORTANT]
+> **Correction (Desjardins, 2026-08-05).** An earlier revision named Entra B2B "Trust compliant devices" the preferred lever. That was wrong for this scenario. The cross-tenant access **inbound trust settings** only take effect when the user authenticates as a **cross-tenant B2B guest**, because they tell the resource tenant to honour a device-compliance claim carried **in the guest's token from their home tenant**. They cannot be switched on to make a **Prod**-compliant device count as compliant when the user signs in with a **Dev**-tenant account from that device — that sign-in is native to the Dev tenant and is evaluated against the Dev tenant's own device registry. Separately, the blocked event is a **non-interactive server-side call from AWS with no device context at all**, which no device-trust setting can remedy.
+
+* **Scoped CA exception** (advisory PDF Option 1): admit the Croesus AWS egress ranges **for the non-prod application only**, with compensating controls. Lower assurance, but it is the lever that actually addresses a device-less backend call.
+* **Fix the registration shape** so the backend authenticates as a workload with its own confidential credential rather than depending on a user's device-bound context. This is the durable answer if the redemption is genuinely server-side.
+* **Re-shape non-prod to B2B guest access** (advisory PDF Option 2, corrected): only if users authenticate into the non-prod tenant as **guests from the Prod tenant** does "Trust compliant devices" become available. That is an identity-model change, not a tenant toggle, and it still does nothing for the server-side leg.
 * If Croesus confirms they intend a **true OBO**, that additionally requires an **exposed-API scope + confidential-client credential** on the Croesus backend before the flow is standards-compliant.
 
 > **Do not frame the CA policy as broken.** Any Option A change is a deliberate, scoped accommodation — not a bug fix.
@@ -169,7 +176,8 @@ Obtain the authoritative flow definition because the definitive evidence is RMS-
 ```text
 1. Escalate to Croesus (Option B) -> obtain flow definition + AWS IP ranges
 2. If true OBO intended -> require exposed-API scope + confidential-client credential on the Croesus backend, then
-3. Apply scoped Option A: B2B "Trust compliant devices" (preferred) OR scoped CA trusted-location exception + MFA
+3. Apply scoped Option A: scoped CA exception for the non-prod app + compensating controls
+   (B2B "Trust compliant devices" applies ONLY if non-prod is re-shaped to guest sign-in)
 4. Re-test the non-prod (dev-prod) scenario; compare to the prod-prod reference
 ```
 
@@ -209,7 +217,7 @@ sequenceDiagram
 ### 6.2 Considered alternatives (and why not)
 
 * **Option A only** (treat as internal misconfiguration, fix CA/app-reg immediately): rejected as the first move — CA is behaving correctly and the authoritative flow is RMS-locked; fixing blindly risks weakening security for an unconfirmed flow.
-* **Option B only** (push everything to Croesus): insufficient alone — even with vendor confirmation, the cross-tenant device-compliance gap is a customer-side condition needing an internal accommodation.
+* **Option B only** (push everything to Croesus): insufficient alone — even with vendor confirmation, the cross-tenant device-compliance gap is a customer-side condition needing an internal accommodation. Note that the accommodation must be a scoped CA decision, not a device-trust setting (see the correction in section 5).
 * **Advisory PDF Option 3** (unify to a single tenant or dedicated test-tenant-joined devices): highest assurance but a large re-architecture; reserve as a last resort.
 * **Blaming the dev-dev implicit-ID-token + SiteMinder redirect:** rejected — those are dev hygiene gaps worth cleaning, but they do not produce a server-side AWS-IP token event; that is backend behaviour.
 
@@ -219,7 +227,7 @@ sequenceDiagram
 
 1. **Send the escalation packet** (`assets/croesus-escalation-packet.md`) to Croesus and obtain the flow definition + full AWS egress IP ranges.
 2. **Run the verification commands** (`assets/app-registration-verification.md`) to capture the verbatim AADSTS/CA-policy evidence, owners, admin-consent, and tenant IDs.
-3. **Apply the cross-tenant accommodation** — prefer B2B "Trust compliant devices"; otherwise a scoped CA trusted-location exception + MFA for the non-prod app only.
+3. **Apply the scoped accommodation** — a CA exception for the non-prod app only, with compensating controls. Do not plan on B2B "Trust compliant devices": it applies only to guest sign-ins and cannot help a device-less server-side call.
 4. **Enforce a Token Protection / token-binding CA control** so device-unbound tokens are denied even in PROD (addresses finding V1).
 5. **Clean up hygiene** — disable implicit ID-token issuance on dev-dev, review the SiteMinder test redirect, and resolve the dev-prod naming/tenant drift (findings V2, V3).
 6. **Re-test the non-prod (dev-prod) scenario** and compare against the prod-prod reference.
