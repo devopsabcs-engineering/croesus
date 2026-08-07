@@ -1,4 +1,16 @@
 [CmdletBinding()]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+    'PSAvoidOverwritingBuiltInCmdlets',
+    '',
+    Scope = 'Function',
+    Target = 'Start-Sleep',
+    Justification = 'The static test replaces Start-Sleep so retry delays can be asserted without waiting.')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+    'PSUseShouldProcessForStateChangingFunctions',
+    '',
+    Scope = 'Function',
+    Target = 'Start-Sleep',
+    Justification = 'The Start-Sleep test double only records requested delays in script scope.')]
 param()
 
 Set-StrictMode -Version Latest
@@ -65,7 +77,67 @@ $cleanupAst = Get-ScriptAst -Path $cleanupPath
 
 $invokeGraphSource = Get-FunctionSource -Ast $provisionAst -Name 'Invoke-Graph'
 $callbackFunctionSource = Get-FunctionSource -Ast $provisionAst -Name 'Assert-DeploymentCallbackUri'
+. ([scriptblock]::Create($invokeGraphSource))
 . ([scriptblock]::Create($callbackFunctionSource))
+
+function az {
+    $resultIndex = $script:mockAzAttemptCount
+    $script:mockAzAttemptCount++
+    $global:LASTEXITCODE = $script:mockAzExitCodes[$resultIndex]
+    Write-Output ($script:mockAzResults[$resultIndex])
+}
+
+function Start-Sleep {
+    param([Parameter(Mandatory)][double]$Seconds)
+
+    $script:mockSleepSeconds += $Seconds
+}
+
+function Initialize-GraphMockState {
+    param(
+        [Parameter(Mandatory)][string[]]$Results,
+        [Parameter(Mandatory)][int[]]$ExitCodes
+    )
+
+    $script:mockAzResults = $Results
+    $script:mockAzExitCodes = $ExitCodes
+    $script:mockAzAttemptCount = 0
+    $script:mockSleepSeconds = @()
+}
+
+$transientNotFound = 'ERROR: Not Found({"error":{"code":"Request_ResourceNotFound","message":"not yet visible"}})'
+Initialize-GraphMockState `
+    -Results @($transientNotFound, $transientNotFound, $transientNotFound, '{"value":[]}') `
+    -ExitCodes @(1, 1, 1, 0)
+$retryResult = Invoke-Graph -Method GET -Uri 'https://graph.microsoft.com/v1.0/applications/test-object-id'
+if ($script:mockAzAttemptCount -ne 4 -or @($retryResult.value).Count -ne 0) {
+    throw 'Invoke-Graph must make at most four attempts and return the successful final response.'
+}
+if (($script:mockSleepSeconds -join ',') -cne '2,4,8') {
+    throw "Invoke-Graph retry delays must be exactly 2,4,8 seconds; observed $($script:mockSleepSeconds -join ',')."
+}
+
+foreach ($nonTransientResult in @(
+        'ERROR: Not Found({"error":{"code":"Request_ResourceNotFoundExtra","message":"wrong code"}})',
+        'ERROR: Bad Request({"error":{"code":"Request_ResourceNotFound","message":"wrong status"}})',
+        'ERROR: Forbidden({"error":{"code":"Authorization_RequestDenied","message":"DO_NOT_LOG_RAW_PAYLOAD"}})')) {
+    Initialize-GraphMockState -Results @($nonTransientResult) -ExitCodes @(1)
+    try {
+        Invoke-Graph -Method GET -Uri 'https://graph.microsoft.com/v1.0/applications/test-object-id' | Out-Null
+        throw 'Invoke-Graph accepted a non-transient Graph failure.'
+    }
+    catch {
+        if ($_.Exception.Message -eq 'Invoke-Graph accepted a non-transient Graph failure.') {
+            throw
+        }
+        if ($script:mockAzAttemptCount -ne 1 -or $script:mockSleepSeconds.Count -ne 0) {
+            throw 'Invoke-Graph must fail non-transient Graph responses immediately without sleeping.'
+        }
+        if ($_.Exception.Message.Contains('DO_NOT_LOG_RAW_PAYLOAD')) {
+            throw 'Invoke-Graph final failure context must not expose raw Azure CLI payloads.'
+        }
+    }
+}
 
 foreach ($validUri in @(
         'https://legacy.example.com/signin-oidc',
@@ -121,18 +193,46 @@ foreach ($requestBodyFragment in @(
     }
 }
 
+foreach ($retryFragment in @(
+        '$maxAttempts = 4',
+        '$result = & az @arguments 2>&1',
+        '$exitCode = $LASTEXITCODE',
+    '$hasSemanticNotFound = [regex]::IsMatch(',
+        '$httpStatus -ceq ''404''',
+        '$graphCode -ceq ''Request_ResourceNotFound''',
+        '-not $isTransientResourceNotFound -or $attempt -eq $maxAttempts',
+        '$delaySeconds = [math]::Pow(2, $attempt)',
+        'Start-Sleep -Seconds $delaySeconds')) {
+    if (-not $invokeGraphSource.Contains($retryFragment)) {
+        throw "Invoke-Graph bounded retry contract is missing: $retryFragment"
+    }
+}
+
 Assert-SourceOrder `
     -Source $invokeGraphSource `
     -Fragments @(
         '$bodyPath = $null',
         'try {',
+        '$maxAttempts = 4',
         '[System.IO.File]::WriteAllText(',
         "'--body', `"@`$bodyPath`"",
-        '$result = & az @arguments',
-        'return ($result -join [Environment]::NewLine) | ConvertFrom-Json',
+        'for ($attempt = 1; $attempt -le $maxAttempts; $attempt++)',
+        '$result = & az @arguments 2>&1',
+        '$exitCode = $LASTEXITCODE',
+        'if ($exitCode -eq 0)',
+        'return $resultText | ConvertFrom-Json',
+        '$isTransientResourceNotFound =',
+        'if (-not $isTransientResourceNotFound -or $attempt -eq $maxAttempts)',
+        'throw "Microsoft Graph request failed:',
+        '$delaySeconds = [math]::Pow(2, $attempt)',
+        'Start-Sleep -Seconds $delaySeconds',
         'finally {',
         'Remove-Item -LiteralPath $bodyPath -Force') `
-    -Message 'Invoke-Graph must use a file-backed request body and remove it in finally after execution and parsing.'
+    -Message 'Invoke-Graph must capture stderr, fail non-transient requests immediately, bound retry delay, and remove its file-backed body in finally.'
+
+if ($invokeGraphSource -match '(?s)Write-(?:Output|Host|Information|Warning|Verbose|Debug).*\$(?:result|resultText|bodyPath|json)') {
+    throw 'Invoke-Graph must not log raw Azure CLI output, request payloads, or temporary request-body paths.'
+}
 
 if ($invokeGraphSource -match '''--body'',\s*\$json') {
     throw 'Invoke-Graph must not pass serialized JSON inline to az rest.'

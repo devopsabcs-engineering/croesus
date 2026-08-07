@@ -40,6 +40,7 @@ function Invoke-Graph {
 
     $bodyPath = $null
     try {
+        $maxAttempts = 4
         $arguments = @('rest', '--method', $Method, '--uri', $Uri, '--output', 'json', '--only-show-errors')
         if ($null -ne $Body) {
             $bodyPath = Join-Path ([System.IO.Path]::GetTempPath()) "croesus-graph-$([guid]::NewGuid().ToString('N')).json"
@@ -51,16 +52,48 @@ function Invoke-Graph {
             $arguments += @('--headers', 'Content-Type=application/json', '--body', "@$bodyPath")
         }
 
-        $result = & az @arguments
-        if ($LASTEXITCODE -ne 0) {
-            throw "Microsoft Graph request failed: $Method $Uri"
-        }
+        for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $result = & az @arguments 2>&1
+            $exitCode = $LASTEXITCODE
+            $resultText = $result -join [Environment]::NewLine
+            if ($exitCode -eq 0) {
+                if ([string]::IsNullOrWhiteSpace($resultText)) {
+                    return $null
+                }
 
-        if ([string]::IsNullOrWhiteSpace(($result -join [Environment]::NewLine))) {
-            return $null
-        }
+                return $resultText | ConvertFrom-Json
+            }
 
-        return ($result -join [Environment]::NewLine) | ConvertFrom-Json
+            $httpStatusMatch = [regex]::Match(
+                $resultText,
+                '(?i)(?:HTTP(?:/\d(?:\.\d)?)?\s+|status(?:\s+code)?["'':=\s]+)(?<status>\d{3})\b')
+            $hasSemanticNotFound = [regex]::IsMatch(
+                $resultText,
+                '(?i)(?:^|\s)Not\s+Found(?=\s*\()')
+            $graphCodeMatch = [regex]::Match(
+                $resultText,
+                '(?i)["'']?code["'']?\s*[:=]\s*["''](?<code>[A-Za-z0-9_]+)["'']')
+            $httpStatus = if ($httpStatusMatch.Success) {
+                $httpStatusMatch.Groups['status'].Value
+            }
+            elseif ($hasSemanticNotFound) {
+                '404'
+            }
+            else {
+                'unknown'
+            }
+            $graphCode = if ($graphCodeMatch.Success) { $graphCodeMatch.Groups['code'].Value } else { 'unknown' }
+            $isTransientResourceNotFound =
+                $httpStatus -ceq '404' -and
+                $graphCode -ceq 'Request_ResourceNotFound'
+
+            if (-not $isTransientResourceNotFound -or $attempt -eq $maxAttempts) {
+                throw "Microsoft Graph request failed: $Method $Uri (Azure CLI exit code $exitCode; HTTP status $httpStatus; Graph code $graphCode)."
+            }
+
+            $delaySeconds = [math]::Pow(2, $attempt)
+            Start-Sleep -Seconds $delaySeconds
+        }
     }
     finally {
         if ($null -ne $bodyPath -and (Test-Path -LiteralPath $bodyPath -PathType Leaf)) {
