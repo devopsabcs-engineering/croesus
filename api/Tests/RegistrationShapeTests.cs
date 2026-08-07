@@ -12,9 +12,9 @@ namespace Croesus.Api.Tests;
 /// redirect URIs, no key/password credentials, no exposed API scopes, and no app roles. Without a
 /// confidential-client credential the On-Behalf-Of exchange is structurally impossible for these
 /// registrations.</item>
-/// <item>The SPA redirect URIs record server-rendered endpoints (paths ending in <c>.aspx</c> or containing
-/// <c>affwebservices</c>). This is the recorded correctness finding: SPA redirect URIs are meant for
-/// browser-delivered SPAs, and these server-rendered endpoints are the flagged mismatch.</item>
+/// <item>The SPA redirect URIs include paths ending in <c>.aspx</c> or containing
+/// <c>affwebservices</c>. Path names alone do not classify the browser UI or establish a registration
+/// mismatch.</item>
 /// </list>
 /// </summary>
 public sealed class RegistrationShapeTests
@@ -47,19 +47,18 @@ public sealed class RegistrationShapeTests
 
     [Theory]
     [MemberData(nameof(ExportFiles))]
-    public void SpaRedirectUris_RecordServerRenderedEndpoints_WhichIsTheFlaggedCorrectnessFinding(string fileName)
+    public void SpaRedirectUris_ContainAspxOrAffWebServicesPaths(string fileName)
     {
         var root = LoadExport(fileName);
 
-        var serverRenderedRedirects = EnumerateStrings(root, "spa", "redirectUris")
+        var matchingRedirects = EnumerateStrings(root, "spa", "redirectUris")
             .Where(uri => uri.EndsWith(".aspx", StringComparison.OrdinalIgnoreCase)
                           || uri.Contains("affwebservices", StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        // The finding is that SPA redirect URIs (intended for browser-delivered single-page apps) record
-        // server-rendered endpoints. This assertion PASSES because the captured exports contain them, and it
-        // fails only if a future re-capture removes the recorded mismatch without updating this evidence.
-        Assert.NotEmpty(serverRenderedRedirects);
+        // This pins only the literal redirect-path evidence. Rendering topology and registration correctness
+        // depend on runtime behavior, especially which component redeems the authorization code.
+        Assert.NotEmpty(matchingRedirects);
     }
 
     private static JsonElement LoadExport(string fileName)

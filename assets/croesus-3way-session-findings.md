@@ -20,21 +20,21 @@ Findings carry an ID so the rest of this document can reference them precisely.
 
 | ID | Finding | Source |
 | --- | --- | --- |
-| F1 | GPD Central is a **server-rendered multi-page application**, roughly 130 ASP.NET (`.aspx`) pages. It is **not** a browser SPA. | Croesus |
-| F2 | The `/oauth2/v2.0/token` redemption runs **server-side** on the Croesus AWS backend. | Croesus, corroborated by Desjardins HAR |
+| F1 | Croesus reports Central runs on .NET Framework 4.5.2 with roughly 130 ASP.NET (`.aspx`) pages, a BFF, and one URL for application functionality. Croesus has alternated between SPA and multi-page descriptions, so the UI topology remains unresolved: SPA, multi-page Web Forms, and hybrid are all possible. | Croesus |
+| F2 | Croesus reports that `/oauth2/v2.0/token` redemption runs server-side on its AWS backend. This remains vendor-reported until Q7, Q8, and Q15 confirm the redeemer and token custody. | Croesus |
 | F3 | Reworking the authentication is described as touching roughly **27 files**, and Central serves **other customers**, so a Desjardins-specific change is unattractive. | Croesus |
 | F4 | The AWS servers sit **behind a VPN**. | Croesus |
 | F5 | A **site-to-site VPN already exists** between Croesus and Desjardins. | Desjardins (Mathieu Santerre) |
 | F6 | The failure occurs **only in the non-prod (Dev) tenant**. Prod is unaffected. | Desjardins |
 | F7 | Desjardins-managed workstations can be joined to **only one tenant**, and that tenant is **Prod**. In the Dev tenant those same machines are unknown devices. | Desjardins |
 | F8 | Cross-tenant inbound trust settings ("Trust compliant devices", "Trust hybrid joined devices", "Trust MFA") apply **only to B2B guest sign-ins**. | Desjardins (Mathieu Santerre) |
-| F9 | A browser HAR of a real Central sign-in contains **only `/authorize`** and **no `/token`**. | Desjardins |
+| F9 | A browser HAR of one real Central sign-in contains **only `/authorize`** and **no `/token`**. It proves `/token` did not occur in that sampled browser transaction; it does not classify the UI or independently locate redemption. | Desjardins |
 | F10 | All of the above concerns **Central**. **Conseiller is a separate product** and a separate assessment. | Croesus |
-| F11 | Central's server-rendered layer runs on **.NET Framework 4.5.2**. | Croesus |
+| F11 | Central runs on **.NET Framework 4.5.2**. | Croesus |
 
 ### The decisive one
 
-**F1 is the finding that reorganises everything else.** Every prior document in this repository reasoned about Central as though the `spa` platform on its app registrations described the application. It does not. It describes an application Central is not.
+**F2, Q8, and Q15 reorganise the registration analysis.** The UI topology does not select the Entra platform. The decisive fact is who redeems the authorization code and retains the resulting tokens. A SPA can use a BFF, and a .NET Framework application can serve a JavaScript SPA.
 
 **F11 is the finding that explains the resistance.** It reframes F3 from reluctance into constraint, and it is treated at length in section 2.
 
@@ -44,9 +44,9 @@ Findings carry an ID so the rest of this document can reference them precisely.
 
 | ID | Consequence |
 | --- | --- |
-| A1 | The `spa` platform on all three registrations is a **type mismatch**, not a description. A server-rendered app that redeems its code server-side is a **confidential client** and belongs under the Entra **`web`** platform with a certificate. |
-| A2 | **Central is already a Backend-for-Frontend.** Tokens live on the server, the browser holds a session cookie. That is the pattern Microsoft recommends for server-side web apps, and `web` is the platform that describes it. Nobody is being asked to adopt a new architecture, only to declare the existing one. |
-| A3 | Entra rejects a plain server-side redemption of a `spa` code with `AADSTS9002327`. **Central works in Prod**, so the redemption is **succeeding**. Exactly two explanations survive: the backend **synthesises an `Origin` header**, or it authenticates as a **`web` registration outside the three exports we hold**. |
+| A1 | The Entra registration conclusion follows from the redeemer, not the UI. If the same backend redeems the code and retains tokens for the browser session, it is a confidential client and belongs under **`web`** regardless of SPA, multi-page, or hybrid rendering. If a separate browser public client exists, its **`spa`** registration may be legitimate. |
+| A2 | **SPA and BFF are compatible.** A JavaScript SPA can be served by .NET Framework 4.5.2 while the backend retains OAuth tokens and the browser holds only a session cookie. Treat Croesus's "BFF" label as provisional until Q15 confirms token custody, cookie properties, and backend mediation. |
+| A3 | Entra rejects a plain server-side redemption of a `spa` code with `AADSTS9002327`. If Croesus's reported backend redemption is confirmed and Central works in Prod, two explanations remain: the backend **synthesises an `Origin` header**, or it authenticates as a **`web` registration outside the three exports we hold**. |
 | A4 | **The prod/non-prod split is not yet explained.** See below. |
 | A5 | Refresh tokens issued to a `spa`-platform client are capped at **24 hours** and cannot slide. A `web` confidential client is not capped that way. The current shape is costing Croesus session longevity independently of Conditional Access. |
 | A6 | A trusted named location does **not** satisfy a grant control. Grant controls combine with **AND**. Location has to be used as a **condition** (an exclusion from policy scope), not as a grant. |
@@ -78,7 +78,7 @@ F11 arrived last and matters more than its size suggests.
 
 1. A **client secret** requires no library at all. It is one extra form field on the `/token` POST. This is the cheapest possible way to prove a `web` confidential client works, and it can be done in an afternoon.
 2. A **certificate assertion** is a signed JWT. `System.IdentityModel.Tokens.Jwt` runs on 4.5, and RS256 signing is available. Fiddlier than a secret, but not blocked.
-3. The **`.aspx` pages are untouched either way.** They consume whatever session the auth module establishes.
+3. The **UI topology does not change the OAuth rule.** `.aspx` paths, one visible URL, and PKCE do not identify the redeemer. PKCE is recommended for both public and confidential authorization-code clients.
 
 So the honest sizing is: *the protocol change is small even on 4.5.2; the supported, maintainable version of it wants a framework uplift.* Those are two different conversations and we should not let the second hold the first hostage.
 
@@ -97,6 +97,7 @@ So the honest sizing is: *the protocol change is small even on 4.5.2; the suppor
 | Q12 | Can Central route its Entra calls over the site-to-site VPN or a Desjardins-side proxy? | Croesus | R1 |
 | Q4 | Complete AWS egress ranges per environment. | Croesus | R3 only |
 | Q13 | Which authentication library does Central use (OWIN + ADAL, hand-rolled, other), and is a framework uplift already on the roadmap? | Croesus | Sizing R4 realistically |
+| Q15 | Provide concrete UI-topology and BFF evidence: document reload versus client routing, JavaScript shell and bundles, Web Forms postbacks, the component holding the PKCE verifier, OAuth tokens visible to browser JavaScript, session-cookie properties, and backend mediation of downstream APIs. | Croesus | UI topology and BFF boundary |
 | Q9 | Does Conseiller share any of Central's registrations, backend, or auth code? | Croesus | Scope boundary (F10) |
 | — | Which leg is actually blocked, and do the two tenants scope CA differently for Central? | **Desjardins** | A4, R2 |
 | — | Does Entra accept a `spa` code redeemed server-side with a **synthesised** `Origin`? | **Microsoft / demo tenant** | A3, without waiting on Croesus |
@@ -156,7 +157,7 @@ Either way, drop any synthesised `Origin` header.
 
 Against F3 and F11, three points matter:
 
-* **Only the acquiring code changes.** The `.aspx` pages consume whatever session the auth module establishes. They do not change. Q10 asks Croesus how much of the 27-file surface actually acquires tokens; Q13 asks which library is involved, because that is what really sets the cost.
+* **The acquiring boundary sets the change.** UI paths and rendering topology do not determine the client type. Q10 asks Croesus how much of the 27-file surface actually acquires tokens; Q13 asks which library is involved, because those facts set the cost.
 * **It need not be Desjardins-specific.** Registrations are per customer tenant, so the platform move is per-tenant. Behind a per-tenant configuration flag, Desjardins migrates first and every other customer stays on the current path.
 * **It is not a favour to Desjardins.** Every Croesus tenant gains a real workload identity, the 24-hour refresh cap disappears (A5), and Croesus stops depending on Entra continuing to tolerate a request its `spa` rules are written to reject (A3).
 
@@ -164,7 +165,7 @@ Against F3 and F11, three points matter:
 
 Not a route to fixing the SSO issue, and we should be careful not to present it as one. R4 step 1 does not need it.
 
-It appears here because current Microsoft authentication libraries require a newer target and because A7 is a **standalone vendor-risk item**: Central handles Desjardins identity on a runtime that has been out of support since April 2022. Installing .NET Framework 4.8 on the servers is not the same as retargeting and recompiling Central for 4.8. The maintainable uplift requires both, followed by regression testing of authentication, session handling, and the server-rendered application. Raise it in vendor risk review on its own merits, on its own timeline, and deliberately not as leverage in this escalation.
+It appears here because current Microsoft authentication libraries require a newer target and because A7 is a **standalone vendor-risk item**: Central handles Desjardins identity on a runtime that has been out of support since April 2022. Installing .NET Framework 4.8 on the servers is not the same as retargeting and recompiling Central for 4.8. The maintainable uplift requires both, followed by regression testing of authentication, session handling, and the application. Raise it in vendor risk review on its own merits, on its own timeline, and deliberately not as leverage in this escalation.
 
 ### R5 — Workload identity federation
 
@@ -174,7 +175,7 @@ For Central's reported hosting shape, a certificate credential is the realistic 
 
 ### R9 — Central authentication and credential ladder
 
-Central already has the required BFF boundary: server-rendered pages, a server-held session, and server-side token redemption. The ladder changes the authentication module and credential posture, not the roughly 130 `.aspx` pages.
+Croesus reports a BFF boundary, but Q15 must confirm that browser JavaScript receives no OAuth tokens, the browser holds only a protected session cookie, and downstream API calls traverse the backend. If confirmed, the ladder changes the authentication module and credential posture rather than the UI topology.
 
 1. **Immediate proof:** move the Central redirect URI from `spa` to `web`, prove confidential redemption with a client secret, and keep that secret outside plaintext application configuration. Limit the proof to Dev and the centralized token-acquisition path.
 2. **Operational destination:** install .NET Framework 4.8, retarget and recompile Central for 4.8, centralize authentication in OWIN middleware, retain authorization code with PKCE, and replace the proof secret with a non-exportable certificate credential. Installing the runtime alone is not an application uplift. Regression testing is required before rollout.
@@ -206,9 +207,9 @@ Attempt 2 is the point of the exercise. If Entra accepts a spoofed `Origin`, we 
 
 Requires one interactive sign-in per registration to capture a real code, so this is a semi-interactive script rather than a fully automated one.
 
-### Experiment B — a server-rendered mock
+### Experiment B — a backend-redemption mock
 
-Build a multi-page, server-rendered BFF that mirrors Central's shape and run it against both registration types.
+Build a backend-redemption BFF and run it against both registration types. The browser UI can be SPA, multi-page, or hybrid because Entra observes the redemption request, not the rendering model.
 
 A literal ASP.NET Web Forms mock on .NET Framework is possible, and F11 makes it more tempting than before. Resist it as a first move: **Entra cannot distinguish Web Forms from Razor Pages.** It observes a server-side POST to `/token`, with or without a credential, with or without `Origin`. ViewState, postbacks, and the runtime version contribute nothing to the evidence. A Razor Pages MPA on the existing Linux plan reproduces the identical OAuth surface at a fraction of the cost.
 
@@ -221,7 +222,7 @@ Reach for a genuine `.aspx` build on 4.5.2 only if Croesus disputes the equivale
 1. **Run the tenant parity check (R2).** Internal, immediate, and it may dissolve the problem outright.
 2. **Run Experiment A.** Answers Q8 by deduction from our own tenant, before Croesus replies.
 3. **Ask Croesus Q12 (VPN routing) in parallel.** It is the fastest unblock that needs no vendor code change.
-4. **Send the remaining questions** (Q7, Q8, Q10, Q11, Q13, Q9) via the [escalation packet](croesus-escalation-packet.md).
+4. **Send the remaining questions** (Q7, Q8, Q10, Q11, Q13, Q15, Q9) via the [escalation packet](croesus-escalation-packet.md).
 5. **Apply R1 or R2** as the short-term unblock for non-prod, scoped to the non-prod application only.
 6. **Propose R9 step 1 (secret, Dev only)** as the durable fix's cheapest first move, staged per-tenant so Croesus carries no multi-customer risk and stores no secret in plaintext configuration.
 7. **Track R8 and the Conseiller assessment separately**, on their own timelines, outside this escalation.
@@ -265,7 +266,7 @@ No Conseiller remediation belongs in the Central escalation until that assessmen
 
 ## 9. Related documents
 
-* [Vendor escalation packet](croesus-escalation-packet.md) — the artifact sent to Croesus, carrying Q1 through Q12.
+* [Vendor escalation packet](croesus-escalation-packet.md) — the artifact sent to Croesus, carrying Q1 through Q15.
 * [App registration analysis findings](app-registration-analysis-findings.md) — the registration-level evidence.
 * [App registration verification](app-registration-verification.md) — reproduction steps.
 * [Evidence narrative](../docs/evidence-narrative.md) — what the evidence proves and what it does not.

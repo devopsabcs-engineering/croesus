@@ -15,17 +15,15 @@ const codeStyle: React.CSSProperties = {
 };
 
 /**
- * Session exhibit: the registration-shape type mismatch. GPD Central is a
- * server-rendered multi-page application declared under the `spa` platform,
- * which describes a browser public client it is not. Rendered unauthenticated
- * so it can be walked through with Croesus and Desjardins without signing in.
+ * Session exhibit: UI topology is unresolved, while registration type follows
+ * the code redeemer and token custodian. Rendered unauthenticated so it can be
+ * walked through with Croesus and Desjardins without signing in.
  */
 export function RegistrationShapePanel() {
   return (
     <section style={{ marginTop: 32 }}>
       <h3>
-        The type mismatch: <code style={codeStyle}>spa</code> platform on a server-rendered
-        application
+        Separate UI topology from token architecture
       </h3>
 
       <p style={{ fontSize: 13, lineHeight: 1.6, color: "#666", marginTop: -8 }}>
@@ -34,24 +32,30 @@ export function RegistrationShapePanel() {
       </p>
 
       <p style={{ fontSize: 14, lineHeight: 1.6, color: "#444" }}>
-        Croesus confirms Central is a <strong>server-rendered multi-page ASP.NET application</strong>{" "}
-        on .NET Framework 4.5.2, roughly 130 <code style={codeStyle}>.aspx</code> pages, and that the
-        code is redeemed <strong>server-side</strong>. A Desjardins browser trace corroborates it:{" "}
-        <code style={codeStyle}>/oauth2/v2.0/authorize</code> is present,{" "}
-        <strong>
-          <code style={codeStyle}>/oauth2/v2.0/token</code> is not
-        </strong>
-        . So Central is <strong>already a Backend-for-Frontend</strong> — the Entra{" "}
-        <code style={codeStyle}>web</code> platform is the one that describes it, and{" "}
-        <code style={codeStyle}>spa</code> is a <strong>type mismatch</strong> rather than a
-        description of the application.
+        Croesus reports .NET Framework 4.5.2, roughly 130 <code style={codeStyle}>.aspx</code>{" "}
+        pages, one URL for functionality, a BFF, and server-side code redemption. Croesus has also
+        alternated between SPA and multi-page descriptions. The UI may be a JavaScript SPA served by
+        Web Forms, a multi-page Web Forms application, or a hybrid. One URL,{" "}
+        <code style={codeStyle}>.aspx</code> paths, and PKCE do not classify it.
       </p>
 
       <p style={{ fontSize: 14, lineHeight: 1.6, color: "#444" }}>
-        Entra rejects a plain server-side redemption of a <code style={codeStyle}>spa</code>{" "}
-        authorization code with <code style={codeStyle}>AADSTS9002327</code>. Central nonetheless
-        works in Prod, so the redemption is <strong>succeeding</strong>. Exactly two explanations
-        survive.
+        A Desjardins browser trace contains <code style={codeStyle}>/oauth2/v2.0/authorize</code> and{" "}
+        <strong>
+          <code style={codeStyle}>/oauth2/v2.0/token</code> is not
+        </strong>
+        . That proves <code style={codeStyle}>/token</code> did not occur in the sampled browser
+        transaction. It does not classify the UI or independently identify the redeemer. SPA and BFF
+        are compatible; the BFF label remains provisional until token custody, the session cookie,
+        and backend mediation are demonstrated.
+      </p>
+
+      <p style={{ fontSize: 14, lineHeight: 1.6, color: "#444" }}>
+        Registration type follows the code redeemer and token custodian. If the same backend redeems
+        and retains tokens, it is a confidential <code style={codeStyle}>web</code> client regardless
+        of UI topology. If a separate browser public client exists, its{" "}
+        <code style={codeStyle}>spa</code> registration may be legitimate. If Croesus&rsquo;s reported
+        backend redemption is confirmed, Prod success leaves two explanations.
       </p>
 
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
@@ -89,12 +93,17 @@ export function RegistrationShapePanel() {
         <a href={`${PACKET}#2-questions-for-croesus`} target="_blank" rel="noreferrer">
           Q8
         </a>{" "}
-        (complete registration inventory — the primary ask) and{" "}
+        (complete registration inventory),{" "}
         <a href={`${PACKET}#2-questions-for-croesus`} target="_blank" rel="noreferrer">
           Q7
         </a>{" "}
         (redacted <code style={codeStyle}>/token</code> capture — is an{" "}
-        <code style={codeStyle}>Origin</code> header present?). Presence indicators and SHA-256
+        <code style={codeStyle}>Origin</code> header present?), and{" "}
+        <a href={`${PACKET}#2-questions-for-croesus`} target="_blank" rel="noreferrer">
+          Q15
+        </a>{" "}
+        (UI routing, PKCE-verifier owner, browser token visibility, session-cookie properties, and
+        backend mediation). Presence indicators and SHA-256
         hashes only — never raw tokens or secrets.{" "}
         <a href={PACKET} target="_blank" rel="noreferrer">
           Full question list →
@@ -107,7 +116,7 @@ export function RegistrationShapePanel() {
         posture alone cannot be the whole story — so either the blocked leg is not the one we believe,
         or the two tenants scope Conditional Access differently for Central.{" "}
         <a href={FINDINGS} target="_blank" rel="noreferrer">
-          All findings and the eight remediation routes →
+          All findings and the nine remediation routes →
         </a>
       </p>
 

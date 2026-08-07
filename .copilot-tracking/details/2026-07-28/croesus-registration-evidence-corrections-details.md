@@ -357,6 +357,37 @@ Add the newly reported facts without broadening Central's escalation scope: Cons
 
 Run focused Markdown diagnostics on assets/croesus-3way-session-findings.md. The file must have no new diagnostics.
 
+## Implementation Phase 7: Separate UI Topology from Token Architecture
+
+<!-- parallelizable: false -->
+
+### Step 7.1: Correct current-facing documentation
+
+Revise README.md, assets/croesus-3way-session-findings.md, assets/croesus-escalation-packet.md, assets/app-registration-analysis-findings.md, and docs/evidence-narrative.md. Replace categorical claims that Central is not a SPA or is necessarily a server-rendered multi-page UI with this evidence-safe position:
+
+* Croesus reports .NET Framework 4.5.2, roughly 130 `.aspx` pages, a BFF, and a single URL for functionality, but has alternated between SPA and multi-page descriptions.
+* The UI topology is unresolved and may be SPA, multi-page Web Forms, or hybrid. A single visible URL and `.aspx` paths do not classify it.
+* The sampled HAR proves that `/token` redemption did not occur in that browser transaction. It does not prove how the UI renders.
+* PKCE is recommended for public and confidential authorization-code clients and does not imply SPA.
+* If the same backend redeems the code and retains tokens for the browser session, it is a confidential `web` client/BFF boundary regardless of whether the browser UI is SPA, multi-page, or hybrid.
+* Calling the application a BFF remains provisional until Croesus confirms that browser JavaScript never receives OAuth tokens and downstream API calls are mediated by the backend.
+
+Add a vendor question that requests the concrete UI and BFF evidence: document reload versus client-side routing, JavaScript shell/bundles, Web Forms postbacks, component holding the PKCE verifier, token exposure to browser JavaScript, session-cookie properties, and whether all downstream API calls traverse the backend. Update route counts from eight to nine where current-facing text names the count.
+
+### Step 7.2: Correct the demo panel and registration-shape test
+
+Revise spa/src/components/RegistrationShapePanel.tsx so it explains that SPA and BFF are compatible and that PKCE does not classify the UI. Keep the registration conclusion tied to the server-side redeemer and complete registration inventory, not to `.aspx` or a single URL.
+
+Revise api/Tests/RegistrationShapeTests.cs so the second test asserts only that the exports contain `.aspx` or `affwebservices` redirect paths. Rename the test and comments to remove the false claim that those paths prove a server-rendered UI or a registration mismatch. Preserve the first test's structural public-client and OBO-impossible assertions.
+
+### Step 7.3: Correct and regenerate both deck language packs
+
+Revise docs/deck/generate-deck.py in English and French. Remove categorical multi-page/not-SPA language; state that UI topology is unresolved, SPA+BFF is possible, PKCE is not a classifier, and server-side redemption is the registration-relevant fact. Regenerate both 14-slide PPTX files.
+
+### Step 7.4: Run focused validation
+
+Run diagnostics on changed Markdown, TypeScript, Python, and C# files; `dotnet test api/Tests/Croesus.Api.Tests.csproj --filter FullyQualifiedName~RegistrationShapeTests`; `npm --prefix spa run build`; and `python docs/deck/generate-deck.py`. Confirm both decks contain 14 slides.
+
 ## Success Criteria
 
 * Docs, tests, and evidence tooling reflect the evidence-qualified revised position with accurate `1008` and registration-correctness framing, and all non-optional tests pass

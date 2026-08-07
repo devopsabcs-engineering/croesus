@@ -56,8 +56,8 @@ CONTENT["en"] = {
                  "server-side /token redemption  |  Central only — not Conseiller",
     "title_date": "5 August 2026  —  updated after the three-way session",
     "title_links": [
-        ("\u25b6  Session findings and all eight routes", FINDINGS),
-        ("\u25b6  Question list (Q1\u2013Q14) on GitHub", QUESTIONS),
+        ("\u25b6  Session findings and all nine routes", FINDINGS),
+        ("\u25b6  Question list (Q1\u2013Q15) on GitHub", QUESTIONS),
         ("\u25b6  Live demo \u2014 croesus-spa.azurewebsites.net", DEMO_APP),
     ],
     "title_notes": "Framing: this is a joint fact-finding session, not a defect "
@@ -85,18 +85,16 @@ CONTENT["en"] = {
     "s3_kicker": "Where we stand today",
     "s3_title": "Bottom line",
     "s3_bullets": [
-        [("Central is a ", False), ("server-rendered multi-page application", True),
-         (" — ~130 .aspx pages on .NET Framework 4.5.2. Vendor-confirmed. It is "
-          "not a browser SPA.", False)],
-        [("So the ‘spa’ platform on the three registrations is a ", False),
-         ("type mismatch", True),
-         (", not a description. Central is already a Backend-for-Frontend; "
-          "‘web’ is the platform that says so.", False)],
-        [("Central works in Prod, so the server-side redemption is ", False),
-         ("succeeding", True),
-         (" against registrations Entra should reject. Only two explanations "
-          "survive — a synthesised Origin header, or an undisclosed ‘web’ "
-          "registration. ", False), ("Q8 is the primary ask.", True)],
+                [("Central’s UI topology is ", False), ("unresolved", True),
+                 (": SPA, multi-page Web Forms, and hybrid all remain possible. One URL, "
+                    ".aspx paths, and PKCE do not classify it.", False)],
+                [("SPA and BFF are compatible. ", True),
+                 ("Treat the BFF label as provisional until Q15 confirms token custody, "
+                    "cookie properties, and backend mediation.", False)],
+                [("Registration type follows the ", False), ("code redeemer", True),
+                 (". If the same backend redeems and retains tokens, it is a confidential "
+                    "‘web’ client. A separate browser public client may legitimately "
+                    "remain ‘spa’.", False)],
         [("The prod/non-prod split is ", False), ("not yet explained", True),
          (" — the blocked leg carries no device context in either tenant. "
           "Desjardins can settle this alone, this week.", False)],
@@ -141,21 +139,22 @@ CONTENT["en"] = {
         ("/oauth2/v2.0/token \u2014 no occurrence at all", True),
         ("The code leaves the browser but is redeemed elsewhere.", False),
     ],
-    "s5_conclusion": "Conclusion: the redemption is server-side. This corroborates "
-                     "Olivier's account and rules out browser redemption for this "
-                     "capture.",
-    "s5_consequence": "Consequence: Desjardins can no longer observe the Origin "
-                      "header \u2014 it now exists only on Croesus's outbound "
-                      "request. Caveat: one sample, one environment.",
+    "s5_conclusion": "Conclusion: /token did not occur in this sampled browser "
+                     "transaction. That is consistent with Olivier's account, "
+                     "but does not independently identify the redeemer.",
+    "s5_consequence": "Consequence: this HAR cannot classify the UI or prove the "
+                      "BFF boundary. Q7, Q8, and Q15 request the missing evidence. "
+                      "Caveat: one sample, one environment.",
     "s5_notes": "Credit Mathieu for capturing this. Emphasise that this confirms "
                 "what Croesus said \u2014 we are validating the vendor, not "
                 "contradicting them.",
 
-    "s6_kicker": "What follows from it",
-    "s6_title": "The type mismatch, and the two explanations left",
+    "s6_kicker": "If backend redemption is confirmed",
+    "s6_title": "The two explanations left",
     "s6_intro": "Entra rejects a plain server-side redemption of a ‘spa’ "
                 "authorization code with AADSTS9002327. Central works in Prod, so "
-                "the redemption is succeeding. Exactly two explanations survive.",
+                "the same backend redeems and retains tokens, Prod success leaves "
+                "two explanations.",
     "s6_a_head": "1 — A synthesised Origin header",
     "s6_a": [
         ("A server-to-server POST sets no Origin of its own.", True),
@@ -183,7 +182,7 @@ CONTENT["en"] = {
     "s7_title": "Why the registration shape matters",
     "s7_headers": ["", "spa (public client)", "web (confidential client)"],
     "s7_rows": [
-        ["Describes", "A browser public client", "A server-rendered web app / BFF"],
+        ["Describes", "A browser public client", "A confidential server client"],
         ["Credential", "None \u2014 no secret, no certificate",
          "Secret or certificate required"],
         ["Redeems a code", "Only from a cross-origin browser request (Origin header)",
@@ -191,7 +190,8 @@ CONTENT["en"] = {
         ["Server-side redemption", "Rejected: AADSTS9002327", "Supported"],
         ["Refresh token lifetime", "Capped at 24 hours, non-sliding",
          "Not capped that way"],
-        ["What Central actually is", "Not this", "This \u2014 ~130 .aspx pages"],
+        ["Decision evidence", "Browser redeems and holds tokens",
+         "Backend redeems and holds tokens"],
     ],
     "s7_quote": "\u201cTokens issued for the 'Single-Page Application' client-type "
                 "may only be redeemed via cross-origin requests.\u201d  "
@@ -200,10 +200,10 @@ CONTENT["en"] = {
                 "rule, not an opinion. It is also cheap to fix on either branch.",
 
     "s7b_kicker": "Screenshot",
-    "s7b_title": "The same mismatch, live in the demo",
+    "s7b_title": "The same architecture fork, live in the demo",
     "s7b_link": "\u25b6  Open it live \u2014 croesus-spa.azurewebsites.net",
     "s7b_notes": "The panel renders without signing in, so it can be walked "
-                 "through on screen share. Q7, Q8, and the full question list are "
+                 "through on screen share. Q7, Q8, Q15, and the full question list are "
                  "clickable straight from the page.",
 
     "s8_kicker": "Ownership of the evidence",
@@ -244,16 +244,16 @@ CONTENT["en"] = {
         ("Presence indicators or SHA-256 hashes only. Never raw codes, tokens, "
          "secrets, or assertions.", True),
     ],
-    "s9_also": "Also open: Q13 auth library and .NET roadmap  \u2022  Q10 sizing "
+    "s9_also": "Also open: Q15 UI and BFF evidence  \u2022  Q13 auth library and .NET roadmap  \u2022  Q10 sizing "
                "of the change  \u2022  Q12 route Entra calls over the existing "
                "site-to-site VPN  \u2022  Q4 AWS egress ranges  \u2022  Q9 does "
                "Conseiller share anything with Central?",
-    "s9_link": "\u25b6  Full question list Q1\u2013Q14 on GitHub \u2192",
+    "s9_link": "\u25b6  Full question list Q1\u2013Q15 on GitHub \u2192",
     "s9_notes": "Stress the redaction rule up front \u2014 it is what makes Q7 "
                 "answerable by a security-conscious vendor. Q8 leads because it "
                 "can end the ambiguity in a single reply.",
 
-    "s10_kicker": "Eight routes, ranked",
+    "s10_kicker": "Nine routes, ranked",
     "s10_title": "Remediation ladder",
     "s10_bullets": [
         [("Check tenant parity first \u2014 Desjardins alone.", True),
@@ -295,9 +295,9 @@ CONTENT["en"] = {
          (" a token replay to Microsoft Graph is rejected on audience, while a "
           "real On-Behalf-Of exchange issues a distinct, separately audienced "
           "token.", False)],
-        [("The registration mismatch:", True),
-         (" a panel walks through spa vs web and the AADSTS9002327 behaviour, "
-          "with direct links to Q8 and Q7.", False)],
+                [("The registration fork:", True),
+                 (" a panel separates UI topology from the redeemer decision, with "
+                    "direct links to Q8, Q7, and Q15.", False)],
         [("Token inspector and evidence panel:", True),
          (" decoded claims show audience binding rather than a reused bearer. The "
           "raw-token inspector is gated off by default \u2014 we ask the vendor "
@@ -315,7 +315,7 @@ CONTENT["en"] = {
     ],
     "s11_notes": "Demo order: sign in, Call API, show the evidence panel, then the "
                  "replay button, then scroll to the registration-fork panel and "
-                 "click through to Q7/Q8.",
+                 "click through to Q7/Q8/Q15.",
 
     "s12_kicker": "Leaving this session",
     "s12_title": "Next steps and owners",
@@ -327,9 +327,10 @@ CONTENT["en"] = {
          "Croesus", "Q8 \u2014 primary"],
         ["3", "Provide one redacted /token capture (hashes / presence only)",
          "Croesus", "Q7"],
-        ["4", "Confirm the auth library and any .NET Framework uplift plan",
+        ["4", "Provide UI-topology and BFF-boundary evidence", "Croesus", "Q15"],
+        ["5", "Confirm the auth library and any .NET Framework uplift plan",
          "Croesus", "Q13"],
-        ["5", "Assess routing Entra calls over the existing site-to-site VPN",
+        ["6", "Assess routing Entra calls over the existing site-to-site VPN",
          "Joint", "Q12 \u2014 fastest unblock"],
     ],
     "s12_guardrail": "Guardrail until then: do not change Conditional Access, do "
@@ -343,9 +344,9 @@ CONTENT["en"] = {
     "s13_kicker": "Everything referenced in this deck",
     "s13_title": "Links",
     "s13_links": [
-        ("Session findings and all eight routes \u2014 START HERE", FINDINGS),
-        ("Routes and workarounds (R1\u2013R8)", ROUTES),
-        ("Question list Q1\u2013Q14 (escalation packet)", QUESTIONS),
+        ("Session findings and all nine routes \u2014 START HERE", FINDINGS),
+        ("Routes and workarounds (R1\u2013R9)", ROUTES),
+        ("Question list Q1\u2013Q15 (escalation packet)", QUESTIONS),
         ("Escalation packet \u2014 full document", PACKET),
         ("Full analysis \u2014 README", README),
         ("Who can capture the /token Origin header", ORIGIN_SECTION),
@@ -370,8 +371,8 @@ CONTENT["fr"] = {
     "title_date": "5 ao\u00fbt 2026  \u2014  mis \u00e0 jour apr\u00e8s la "
                   "s\u00e9ance tripartite",
     "title_links": [
-        ("\u25b6  Constats de la s\u00e9ance et les huit voies", FINDINGS),
-        ("\u25b6  Liste des questions (Q1\u2013Q14) sur GitHub", QUESTIONS),
+        ("\u25b6  Constats de la s\u00e9ance et les neuf voies", FINDINGS),
+        ("\u25b6  Liste des questions (Q1\u2013Q15) sur GitHub", QUESTIONS),
         ("\u25b6  D\u00e9mo en direct \u2014 croesus-spa.azurewebsites.net", DEMO_APP),
     ],
     "title_notes": "Cadrage : il s'agit d'une s\u00e9ance conjointe "
@@ -406,21 +407,18 @@ CONTENT["fr"] = {
     "s3_kicker": "O\u00f9 nous en sommes",
     "s3_title": "L'essentiel",
     "s3_bullets": [
-        [("Central est une ", False),
-         ("application multipage rendue c\u00f4t\u00e9 serveur", True),
-         (" \u2014 environ 130 pages .aspx sur .NET Framework 4.5.2. "
-          "Confirm\u00e9 par le fournisseur. Ce n'est pas une SPA.", False)],
-        [("La plateforme \u00ab spa \u00bb des trois inscriptions est donc une ", False),
-         ("erreur de type", True),
-         (", non une description. Central est d\u00e9j\u00e0 un "
-          "Backend-for-Frontend ; c'est la plateforme \u00ab web \u00bb qui le dit.",
-          False)],
-        [("Central fonctionne en production : l'\u00e9change c\u00f4t\u00e9 serveur ", False),
-         ("r\u00e9ussit", True),
-         (" alors qu'Entra devrait le refuser. Deux explications subsistent "
-          "\u2014 un en-t\u00eate Origin synth\u00e9tis\u00e9, ou une inscription "
-          "\u00ab web \u00bb non divulgu\u00e9e. ", False),
-         ("Q8 est la demande prioritaire.", True)],
+                [("La topologie d'interface de Central reste ", False),
+                 ("non r\u00e9solue", True),
+                 (" : SPA, Web Forms multipage et hybride demeurent possibles. Une URL, "
+                    "les chemins .aspx et PKCE ne la classent pas.", False)],
+                [("SPA et BFF sont compatibles. ", True),
+                 ("Le BFF reste provisoire jusqu'\u00e0 ce que Q15 confirme la garde des "
+                    "jetons, le t\u00e9moin de session et la m\u00e9diation du serveur.", False)],
+                [("Le type d'inscription suit le ", False),
+                 ("composant qui \u00e9change le code", True),
+                 (". Si le m\u00eame serveur \u00e9change et conserve les jetons, il est un "
+                    "client confidentiel \u00ab web \u00bb. Un client public distinct peut "
+                    "l\u00e9gitimement rester \u00ab spa \u00bb.", False)],
         [("L'\u00e9cart production / pr\u00e9production reste ", False),
          ("inexpliqu\u00e9", True),
          (" \u2014 la requ\u00eate bloqu\u00e9e ne porte aucun contexte d'appareil "
@@ -478,23 +476,22 @@ CONTENT["fr"] = {
         ("Le code quitte le navigateur, mais il est \u00e9chang\u00e9 ailleurs.",
          False),
     ],
-    "s5_conclusion": "Conclusion : l'\u00e9change se fait c\u00f4t\u00e9 serveur. "
-                     "Cela corrobore le t\u00e9moignage d'Olivier et \u00e9carte "
-                     "l'\u00e9change par navigateur pour cette capture.",
-    "s5_consequence": "Cons\u00e9quence : Desjardins ne peut plus observer "
-                      "l'en-t\u00eate Origin \u2014 il n'existe d\u00e9sormais que "
-                      "sur la requ\u00eate sortante de Croesus. R\u00e9serve : un "
-                      "seul \u00e9chantillon, un seul environnement.",
+    "s5_conclusion": "Conclusion : /token n'appara\u00eet pas dans cette transaction "
+                     "navigateur. Cela concorde avec le t\u00e9moignage d'Olivier, "
+                     "sans identifier ind\u00e9pendamment le composant qui l'\u00e9change.",
+    "s5_consequence": "Cons\u00e9quence : ce HAR ne classe pas l'interface et ne prouve "
+                      "pas la fronti\u00e8re BFF. Q7, Q8 et Q15 demandent la preuve "
+                      "manquante. R\u00e9serve : un seul \u00e9chantillon, un environnement.",
     "s5_notes": "Cr\u00e9diter Mathieu pour cette capture. Souligner qu'elle "
                 "confirme ce que Croesus a affirm\u00e9 \u2014 nous validons le "
                 "fournisseur, nous ne le contredisons pas.",
 
-    "s6_kicker": "Ce qui en d\u00e9coule",
-    "s6_title": "L'erreur de type, et les deux explications restantes",
+    "s6_kicker": "Si l'\u00e9change serveur est confirm\u00e9",
+    "s6_title": "Les deux explications restantes",
     "s6_intro": "Entra rejette l'\u00e9change c\u00f4t\u00e9 serveur d'un code "
                 "d'autorisation \u00ab spa \u00bb avec l'erreur AADSTS9002327. "
-                "Or Central fonctionne en production : l'\u00e9change "
-                "r\u00e9ussit. Deux explications subsistent.",
+                "Si le m\u00eame serveur \u00e9change et conserve les jetons, le "
+                "succ\u00e8s en production laisse deux explications.",
     "s6_a_head": "1 \u2014 Un en-t\u00eate Origin synth\u00e9tis\u00e9",
     "s6_a": [
         ("Un POST de serveur \u00e0 serveur n'envoie aucun Origin de lui-m\u00eame.",
@@ -528,7 +525,7 @@ CONTENT["fr"] = {
     "s7_headers": ["", "spa (client public)", "web (client confidentiel)"],
     "s7_rows": [
         ["D\u00e9crit", "Un client public de navigateur",
-         "Une application web rendue c\u00f4t\u00e9 serveur / BFF"],
+         "Un client serveur confidentiel"],
         ["Justificatif", "Aucun \u2014 ni secret, ni certificat",
          "Secret ou certificat requis"],
         ["\u00c9change d'un code",
@@ -539,8 +536,8 @@ CONTENT["fr"] = {
          "Pris en charge"],
         ["Dur\u00e9e des jetons d'actualisation",
          "Plafonn\u00e9e \u00e0 24 heures, non glissante", "Sans ce plafond"],
-        ["Ce qu'est r\u00e9ellement Central", "Pas ceci",
-         "Ceci \u2014 environ 130 pages .aspx"],
+        ["Preuve d\u00e9cisive", "Le navigateur \u00e9change et garde les jetons",
+         "Le serveur \u00e9change et garde les jetons"],
     ],
     "s7_quote": "\u00ab Les jetons \u00e9mis pour le type de client "
                 "\u2018Single-Page Application\u2019 ne peuvent \u00eatre "
@@ -551,10 +548,10 @@ CONTENT["fr"] = {
                 "\u00e9tape du correctif est peu co\u00fbteuse.",
 
     "s7b_kicker": "Capture d'\u00e9cran",
-    "s7b_title": "La m\u00eame erreur de type, en direct dans la d\u00e9mo",
+    "s7b_title": "La m\u00eame bifurcation d'architecture, dans la d\u00e9mo",
     "s7b_link": "\u25b6  L'ouvrir en direct \u2014 croesus-spa.azurewebsites.net",
     "s7b_notes": "Le panneau s'affiche sans connexion : il peut donc \u00eatre "
-                 "pr\u00e9sent\u00e9 en partage d'\u00e9cran. Q8, Q7 et la liste "
+                 "pr\u00e9sent\u00e9 en partage d'\u00e9cran. Q8, Q7, Q15 et la liste "
                  "compl\u00e8te des questions sont cliquables directement depuis "
                  "la page. L'interface de la d\u00e9mo est en anglais.",
 
@@ -602,18 +599,18 @@ CONTENT["fr"] = {
         ("Indicateurs de pr\u00e9sence ou empreintes SHA-256 uniquement. Jamais de "
          "codes, jetons, secrets ou assertions bruts.", True),
     ],
-    "s9_also": "\u00c9galement ouvertes : Q13 biblioth\u00e8que d'authentification "
+    "s9_also": "\u00c9galement ouvertes : Q15 preuve de l'interface et du BFF  \u2022  Q13 biblioth\u00e8que d'authentification "
                "et feuille de route .NET  \u2022  Q10 ampleur du changement  "
                "\u2022  Q12 acheminer les appels Entra par le VPN site \u00e0 site "
                "existant  \u2022  Q4 plages de sortie AWS  \u2022  Q9 Conseiller "
                "partage-t-il quoi que ce soit avec Central ?",
-    "s9_link": "\u25b6  Liste compl\u00e8te des questions Q1\u2013Q14 sur GitHub \u2192",
+    "s9_link": "\u25b6  Liste compl\u00e8te des questions Q1\u2013Q15 sur GitHub \u2192",
     "s9_notes": "Insister d'embl\u00e9e sur la r\u00e8gle de caviardage \u2014 "
                 "c'est ce qui rend Q7 r\u00e9pondable par un fournisseur soucieux "
                 "de s\u00e9curit\u00e9. Q8 passe en t\u00eate car elle peut "
                 "lever l'ambigu\u00eft\u00e9 en une seule r\u00e9ponse.",
 
-    "s10_kicker": "Huit voies, class\u00e9es",
+    "s10_kicker": "Neuf voies, class\u00e9es",
     "s10_title": "\u00c9chelle de rem\u00e9diation",
     "s10_bullets": [
         [("V\u00e9rifier d'abord la parit\u00e9 des locataires \u2014 Desjardins "
@@ -662,10 +659,9 @@ CONTENT["fr"] = {
          (" un rejeu de jeton vers Microsoft Graph est rejet\u00e9 sur l'audience, "
           "tandis qu'un v\u00e9ritable \u00e9change On-Behalf-Of \u00e9met un "
           "jeton distinct, avec sa propre audience.", False)],
-        [("L'erreur de type d'inscription :", True),
-         (" un panneau explique \u00ab spa \u00bb contre \u00ab web \u00bb et le "
-          "comportement AADSTS9002327, avec des liens directs vers Q8 et Q7.",
-          False)],
+                [("La bifurcation d'inscription :", True),
+                 (" un panneau s\u00e9pare la topologie d'interface de la d\u00e9cision du "
+                    "composant d'\u00e9change, avec des liens vers Q8, Q7 et Q15.", False)],
         [("Inspecteur de jetons et panneau de preuve :", True),
          (" les revendications d\u00e9cod\u00e9es montrent une liaison d'audience "
           "plut\u00f4t qu'un jeton r\u00e9utilis\u00e9. L'inspecteur de jetons "
@@ -686,8 +682,8 @@ CONTENT["fr"] = {
     ],
     "s11_notes": "Ordre de la d\u00e9mo : se connecter, appeler l'API, montrer le "
                  "panneau de preuve, puis le bouton de rejeu, puis faire "
-                 "d\u00e9filer jusqu'au panneau d'erreur de type d'inscription et "
-                 "cliquer vers Q8/Q7.",
+                 "d\u00e9filer jusqu'au panneau de bifurcation d'inscription et "
+                 "cliquer vers Q8/Q7/Q15.",
 
     "s12_kicker": "En sortant de cette s\u00e9ance",
     "s12_title": "Prochaines \u00e9tapes et responsables",
@@ -700,9 +696,11 @@ CONTENT["fr"] = {
               "service", "Croesus", "Q8 \u2014 prioritaire"],
         ["3", "Fournir une capture /token caviard\u00e9e (empreintes ou "
               "pr\u00e9sence seulement)", "Croesus", "Q7"],
-        ["4", "Confirmer la biblioth\u00e8que d'authentification et toute "
+          ["4", "Fournir la preuve de la topologie et de la fronti\u00e8re BFF",
+           "Croesus", "Q15"],
+          ["5", "Confirmer la biblioth\u00e8que d'authentification et toute "
               "mont\u00e9e de version .NET pr\u00e9vue", "Croesus", "Q13"],
-        ["5", "\u00c9valuer l'acheminement des appels Entra par le VPN site "
+          ["6", "\u00c9valuer l'acheminement des appels Entra par le VPN site "
               "\u00e0 site existant", "Conjoint", "Q12 \u2014 d\u00e9blocage le "
               "plus rapide"],
     ],
@@ -720,9 +718,9 @@ CONTENT["fr"] = {
                   "pr\u00e9sentation",
     "s13_title": "Liens",
     "s13_links": [
-        ("Constats de la s\u00e9ance et les huit voies \u2014 COMMENCER ICI", FINDINGS),
-        ("Voies et contournements (R1\u2013R8)", ROUTES),
-        ("Liste des questions Q1\u2013Q14 (dossier d'escalade)", QUESTIONS),
+        ("Constats de la s\u00e9ance et les neuf voies \u2014 COMMENCER ICI", FINDINGS),
+        ("Voies et contournements (R1\u2013R9)", ROUTES),
+        ("Liste des questions Q1\u2013Q15 (dossier d'escalade)", QUESTIONS),
         ("Dossier d'escalade \u2014 document complet", PACKET),
         ("Analyse compl\u00e8te \u2014 README", README),
         ("Qui peut capturer l'en-t\u00eate Origin de /token", ORIGIN_SECTION),

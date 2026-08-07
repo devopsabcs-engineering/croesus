@@ -129,6 +129,19 @@ Correct the repository's documentation, tests, and evidence tooling so they stat
 * [x] Step 6.4: Validate the authoritative findings document
   * Run focused Markdown diagnostics on assets/croesus-3way-session-findings.md
 
+### [ ] Implementation Phase 7: Separate UI Topology from Token Architecture
+
+<!-- parallelizable: false -->
+
+* [ ] Step 7.1: Correct current-facing documentation
+  * Details: .copilot-tracking/details/2026-07-28/croesus-registration-evidence-corrections-details.md (Implementation Phase 7)
+* [ ] Step 7.2: Correct the demo panel and registration-shape test
+  * Details: .copilot-tracking/details/2026-07-28/croesus-registration-evidence-corrections-details.md (Implementation Phase 7)
+* [ ] Step 7.3: Correct and regenerate both deck language packs
+  * Details: .copilot-tracking/details/2026-07-28/croesus-registration-evidence-corrections-details.md (Implementation Phase 7)
+* [ ] Step 7.4: Run focused validation
+  * Run Markdown diagnostics, the registration-shape tests, the SPA build, and deck generation
+
 ## Planning Log
 
 See .copilot-tracking/plans/logs/2026-07-28/croesus-registration-evidence-corrections-log.md for discrepancy tracking, implementation paths considered, and suggested follow-on work.
