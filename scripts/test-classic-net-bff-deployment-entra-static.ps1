@@ -6,8 +6,10 @@ $ErrorActionPreference = 'Stop'
 
 $provisionPath = Join-Path $PSScriptRoot 'provision-classic-net-bff-deployment.ps1'
 $cleanupPath = Join-Path $PSScriptRoot 'cleanup-classic-net-bff-deployment.ps1'
+$workflowPath = Join-Path (Split-Path -Parent $PSScriptRoot) '.github\workflows\classic-net-bff-poc.yml'
 $provisionSource = Get-Content -LiteralPath $provisionPath -Raw
 $cleanupSource = Get-Content -LiteralPath $cleanupPath -Raw
+$workflowSource = Get-Content -LiteralPath $workflowPath -Raw
 
 function Get-ScriptAst {
     param([Parameter(Mandatory)][string]$Path)
@@ -114,6 +116,19 @@ Assert-SourceOrder `
         'Save-State',
         'applications/$applicationObjectId/removePassword') `
     -Message 'Credential rotation must create, mask, persist the new key ID, and only then remove prior credentials.'
+
+Assert-SourceOrder `
+    -Source $workflowSource `
+    -Fragments @(
+        '$existsRaw = az group exists --name $env:RESOURCE_GROUP',
+        '$groupExistsExitCode = $LASTEXITCODE',
+        'if ($groupExistsExitCode -ne 0)',
+        '$exists = $existsRaw | ConvertFrom-Json') `
+    -Message 'The validation workflow must reject az group exists failures before parsing the response.'
+
+if ($workflowSource -notmatch '\$exists\s+-isnot\s+\[bool\]') {
+    throw 'The validation workflow must reject malformed or non-boolean az group exists output.'
+}
 
 if ($provisionSource -notmatch '\$priorKeyId -eq \$newCredentialKeyId') {
     throw 'Credential rotation must explicitly preserve the newly created key.'

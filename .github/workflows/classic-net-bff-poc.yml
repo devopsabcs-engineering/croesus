@@ -208,7 +208,16 @@ jobs:
           RESOURCE_GROUP: ${{ steps.inputs.outputs.resource_group }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $exists = az group exists --name $env:RESOURCE_GROUP | ConvertFrom-Json
+          $existsRaw = az group exists --name $env:RESOURCE_GROUP
+          $groupExistsExitCode = $LASTEXITCODE
+          if ($groupExistsExitCode -ne 0) {
+            throw "The deployment identity could not inspect deterministic resource group ``$env:RESOURCE_GROUP`` (az group exists exit code $groupExistsExitCode)."
+          }
+
+          $exists = $existsRaw | ConvertFrom-Json
+          if ($exists -isnot [bool]) {
+            throw "az group exists returned a malformed non-boolean response for resource group ``$env:RESOURCE_GROUP``."
+          }
           if (-not $exists) {
             "Validation what-if skipped because resource group ``$env:RESOURCE_GROUP`` does not exist. Validation did not create it." >> $env:GITHUB_STEP_SUMMARY
             exit 0

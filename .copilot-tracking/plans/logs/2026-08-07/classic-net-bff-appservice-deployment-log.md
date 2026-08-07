@@ -34,6 +34,9 @@ Gaps and deviations identified during implementation.
 * WI-02: Configure required reviewers and Azure public variables on the `poc-demo` GitHub environment. (high)
   * Source: Phase 4, deployment safety boundary
   * Dependency: Repository administrator access
+* WI-03: Correct the validation workflow's false-green Azure prerequisite handling. (completed)
+  * Source: Hosted run 31215402276
+  * Dependency: None
 
 ## User Decisions
 

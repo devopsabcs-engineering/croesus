@@ -29,6 +29,8 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
 * `poc/modern-net10/Croesus.ModernBff.csproj` - Defines self-contained `win-x64` publishing with an executable app host
 * `poc/modern-net10/Tests/StartupConfigurationTests.cs` - Adds regression coverage for the explicit `Poc` client-secret boundary
 * `docs/classic-net-bff-poc.md` - Documents bootstrap permissions, configuration, deployment modes, credential rotation, demo flow, multitenancy, caveats, and teardown
+* `.github/workflows/classic-net-bff-poc.yml` - Fails validation when Azure CLI cannot inspect the deterministic resource group and rejects malformed existence responses
+* `scripts/test-classic-net-bff-deployment-entra-static.ps1` - Prevents Azure CLI failures from being parsed as an absent resource group
 
 ### Removed
 
@@ -44,6 +46,8 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
   * Reason: consolidation found the parameter file in the worktree; an environment-only binding makes it compilable without committing credential material. The workflow still supplies parameters directly.
 * Used a deterministic application ownership tag instead of publishing Entra state between workflow runs.
   * Reason: teardown must rediscover its target safely without treating a mutable or public artifact as authorization to delete directory objects.
+* Hosted validation run `31215402276` passed builds and tests but exposed a false-green optional what-if.
+  * Reason: `az group exists` returned `Forbidden`; the workflow parsed its empty output before checking `$LASTEXITCODE` and incorrectly reported a successful skip.
 
 ## Release Summary
 

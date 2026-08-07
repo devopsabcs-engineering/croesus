@@ -95,3 +95,11 @@ State these caveats directly:
 * A production destination should use certificate or managed-identity-backed client credentials, higher availability, monitoring, and tested key synchronization where applicable
 
 Run all focused and aggregate validation commands without a live deployment.
+
+## Implementation Phase 6: Fail Honestly on What-If Prerequisite Errors
+
+The first hosted validation run completed successfully but exposed a false-green path. `az group exists` returned `Forbidden`; PowerShell converted the empty result to a false value and skipped what-if without checking `$LASTEXITCODE`.
+
+Capture the raw Azure CLI result, check `$LASTEXITCODE` immediately, and fail with a concise permission-oriented message before calling `ConvertFrom-Json`. Only a successful literal boolean response may control the resource-group-exists branch.
+
+Add a static workflow regression check that verifies exit-code handling occurs between `az group exists` and JSON parsing. Revalidate YAML and embedded PowerShell, commit and push the focused fix, then dispatch the workflow again with the same validation inputs. A missing Azure permission must produce a visible failure rather than a successful skipped what-if.
