@@ -9,6 +9,8 @@
 >
 > **Headline:** Croesus reports .NET Framework 4.5.2, roughly 130 `.aspx` pages, a Backend-for-Frontend (BFF), and one URL for the application's functionality, but has alternated between SPA and multi-page descriptions. The UI topology is unresolved and may be SPA, multi-page Web Forms, or hybrid. If the same backend redeems the authorization code and retains tokens for the browser session, it is a confidential `web` client regardless of the UI topology. A separate browser public client may legitimately use a `spa` registration.
 
+Run the R8/R9 comparison through the [classic .NET BFF PoC guide](docs/classic-net-bff-poc.md), which pairs a .NET Framework 4.5.2 Dev proof with the supported .NET 10 destination.
+
 The sections below record how that conclusion was reached, and predate the core document in places.
 
 > [!NOTE]

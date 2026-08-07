@@ -52,6 +52,8 @@ Thumbs.db
 # Local demo runtime artifacts (not committed)
 artifact/
 .demo-state.json
+.classic-net-bff-poc-state.json
+.classic-net-bff-poc-secret*.json
 kvsettings.json
 spa-redirects.json
 grant.json
