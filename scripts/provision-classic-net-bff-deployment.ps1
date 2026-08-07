@@ -38,22 +38,35 @@ function Invoke-Graph {
         [object]$Body
     )
 
-    $arguments = @('rest', '--method', $Method, '--uri', $Uri, '--output', 'json', '--only-show-errors')
-    if ($null -ne $Body) {
-        $json = $Body | ConvertTo-Json -Depth 20 -Compress
-        $arguments += @('--headers', 'Content-Type=application/json', '--body', $json)
-    }
+    $bodyPath = $null
+    try {
+        $arguments = @('rest', '--method', $Method, '--uri', $Uri, '--output', 'json', '--only-show-errors')
+        if ($null -ne $Body) {
+            $bodyPath = Join-Path ([System.IO.Path]::GetTempPath()) "croesus-graph-$([guid]::NewGuid().ToString('N')).json"
+            $json = $Body | ConvertTo-Json -Depth 20 -Compress
+            [System.IO.File]::WriteAllText(
+                $bodyPath,
+                $json,
+                [System.Text.UTF8Encoding]::new($false))
+            $arguments += @('--headers', 'Content-Type=application/json', '--body', "@$bodyPath")
+        }
 
-    $result = & az @arguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "Microsoft Graph request failed: $Method $Uri"
-    }
+        $result = & az @arguments
+        if ($LASTEXITCODE -ne 0) {
+            throw "Microsoft Graph request failed: $Method $Uri"
+        }
 
-    if ([string]::IsNullOrWhiteSpace(($result -join [Environment]::NewLine))) {
-        return $null
-    }
+        if ([string]::IsNullOrWhiteSpace(($result -join [Environment]::NewLine))) {
+            return $null
+        }
 
-    return ($result -join [Environment]::NewLine) | ConvertFrom-Json
+        return ($result -join [Environment]::NewLine) | ConvertFrom-Json
+    }
+    finally {
+        if ($null -ne $bodyPath -and (Test-Path -LiteralPath $bodyPath -PathType Leaf)) {
+            Remove-Item -LiteralPath $bodyPath -Force
+        }
+    }
 }
 
 function Assert-DeploymentCallbackUri {

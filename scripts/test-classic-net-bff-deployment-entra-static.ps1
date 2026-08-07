@@ -63,6 +63,7 @@ function Get-FunctionSource {
 $provisionAst = Get-ScriptAst -Path $provisionPath
 $cleanupAst = Get-ScriptAst -Path $cleanupPath
 
+$invokeGraphSource = Get-FunctionSource -Ast $provisionAst -Name 'Invoke-Graph'
 $callbackFunctionSource = Get-FunctionSource -Ast $provisionAst -Name 'Assert-DeploymentCallbackUri'
 . ([scriptblock]::Create($callbackFunctionSource))
 
@@ -105,6 +106,36 @@ foreach ($requiredFragment in @(
     if (-not $provisionSource.Contains($requiredFragment)) {
         throw "Provisioning contract is missing: $requiredFragment"
     }
+}
+
+foreach ($requestBodyFragment in @(
+        '[System.IO.Path]::GetTempPath()',
+        '[guid]::NewGuid()',
+        '[System.IO.File]::WriteAllText(',
+        '[System.Text.UTF8Encoding]::new($false)',
+        "'--body', `"@`$bodyPath`"",
+        'finally {',
+        'Remove-Item -LiteralPath $bodyPath -Force')) {
+    if (-not $invokeGraphSource.Contains($requestBodyFragment)) {
+        throw "Invoke-Graph request-body safety contract is missing: $requestBodyFragment"
+    }
+}
+
+Assert-SourceOrder `
+    -Source $invokeGraphSource `
+    -Fragments @(
+        '$bodyPath = $null',
+        'try {',
+        '[System.IO.File]::WriteAllText(',
+        "'--body', `"@`$bodyPath`"",
+        '$result = & az @arguments',
+        'return ($result -join [Environment]::NewLine) | ConvertFrom-Json',
+        'finally {',
+        'Remove-Item -LiteralPath $bodyPath -Force') `
+    -Message 'Invoke-Graph must use a file-backed request body and remove it in finally after execution and parsing.'
+
+if ($invokeGraphSource -match '''--body'',\s*\$json') {
+    throw 'Invoke-Graph must not pass serialized JSON inline to az rest.'
 }
 
 Assert-SourceOrder `
