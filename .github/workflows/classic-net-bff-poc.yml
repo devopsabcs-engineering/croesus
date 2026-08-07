@@ -437,14 +437,134 @@ jobs:
         env:
           LEGACY_BASE_URL: ${{ steps.infrastructure.outputs.legacy_base_url }}
           MODERN_BASE_URL: ${{ steps.infrastructure.outputs.modern_base_url }}
+          REGISTRATION_CLIENT_ID: ${{ steps.infrastructure.outputs.registration_client_id }}
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($url in @($env:LEGACY_BASE_URL, $env:MODERN_BASE_URL)) {
-            $response = Invoke-WebRequest -Uri $url -MaximumRedirection 0 -SkipHttpErrorCheck
-            if ([int]$response.StatusCode -notin @(301, 302, 303, 307, 308, 401)) {
-              throw "Unexpected unauthenticated response from ${url}: $([int]$response.StatusCode)"
+
+          function ConvertFrom-QueryString {
+            param([Parameter(Mandatory)][string]$Query)
+
+            $parameters = @{}
+            foreach ($pair in $Query.TrimStart('?').Split(
+                '&',
+                [System.StringSplitOptions]::RemoveEmptyEntries)) {
+              $parts = $pair.Split('=', 2)
+              $name = [uri]::UnescapeDataString($parts[0].Replace('+', ' '))
+              $value = if ($parts.Count -eq 2) {
+                [uri]::UnescapeDataString($parts[1].Replace('+', ' '))
+              }
+              else {
+                ''
+              }
+              $parameters[$name] = $value
             }
-            Write-Information "$url returned expected authentication status $([int]$response.StatusCode)." -InformationAction Continue
+            return $parameters
+          }
+
+          function Assert-EntraChallengeRedirect {
+            param(
+              [Parameter(Mandatory)][System.Net.Http.HttpResponseMessage]$Response,
+              [Parameter(Mandatory)][string]$ExpectedClientId,
+              [Parameter(Mandatory)][string]$ExpectedRedirectUri
+            )
+
+            $redirectStatuses = @(301, 302, 303, 307, 308)
+            if ([int]$Response.StatusCode -notin $redirectStatuses) {
+              throw "Expected an authentication redirect but received HTTP $([int]$Response.StatusCode)."
+            }
+
+            $location = $Response.Headers.Location
+            if ($null -eq $location -or -not $location.IsAbsoluteUri -or
+                $location.Scheme -cne 'https' -or
+                $location.Host -cne 'login.microsoftonline.com') {
+              throw 'Authentication challenge did not return an absolute Microsoft Entra login redirect.'
+            }
+
+            $query = ConvertFrom-QueryString -Query $location.Query
+            if ($query['client_id'] -cne $ExpectedClientId) {
+              throw 'Authentication challenge client_id did not match the deployed registration.'
+            }
+            if ($query['redirect_uri'] -cne $ExpectedRedirectUri) {
+              throw 'Authentication challenge redirect_uri did not match the deployed application callback.'
+            }
+          }
+
+          function Test-AppReadiness {
+            param(
+              [Parameter(Mandatory)][System.Net.Http.HttpClient]$Client,
+              [Parameter(Mandatory)][string]$BaseUrl,
+              [Parameter(Mandatory)][string]$ChallengePath,
+              [Parameter(Mandatory)][string]$ExpectedClientId
+            )
+
+            $maxAttempts = 8
+            $retryDelaySeconds = 10
+            $expectedRedirectUri = "$BaseUrl/signin-oidc"
+            for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+              try {
+                $protectedResponse = $Client.GetAsync("$BaseUrl/api/session").GetAwaiter().GetResult()
+                try {
+                  $protectedStatus = [int]$protectedResponse.StatusCode
+                  if ($protectedStatus -eq 401) {
+                    # A direct unauthorized response is valid for a protected API.
+                  }
+                  elseif ($protectedStatus -in @(301, 302, 303, 307, 308)) {
+                    Assert-EntraChallengeRedirect `
+                      -Response $protectedResponse `
+                      -ExpectedClientId $ExpectedClientId `
+                      -ExpectedRedirectUri $expectedRedirectUri
+                  }
+                  else {
+                    throw "Protected API returned unexpected HTTP $protectedStatus."
+                  }
+                }
+                finally {
+                  $protectedResponse.Dispose()
+                }
+
+                $challengeResponse = $Client.GetAsync("$BaseUrl$ChallengePath").GetAwaiter().GetResult()
+                try {
+                  Assert-EntraChallengeRedirect `
+                    -Response $challengeResponse `
+                    -ExpectedClientId $ExpectedClientId `
+                    -ExpectedRedirectUri $expectedRedirectUri
+                }
+                finally {
+                  $challengeResponse.Dispose()
+                }
+
+                Write-Information "$BaseUrl passed protected-route and authentication-challenge readiness checks." -InformationAction Continue
+                return
+              }
+              catch {
+                if ($attempt -eq $maxAttempts) {
+                  throw "App Service readiness failed for $BaseUrl after $maxAttempts attempts: $($_.Exception.Message)"
+                }
+                Write-Information "$BaseUrl is not ready (attempt $attempt of $maxAttempts); retrying in $retryDelaySeconds seconds." -InformationAction Continue
+                Start-Sleep -Seconds $retryDelaySeconds
+              }
+            }
+          }
+
+          $handler = [System.Net.Http.HttpClientHandler]::new()
+          $handler.AllowAutoRedirect = $false
+          $client = [System.Net.Http.HttpClient]::new($handler)
+          $client.Timeout = [TimeSpan]::FromSeconds(15)
+          try {
+            Test-AppReadiness `
+              -Client $client `
+              -BaseUrl $env:LEGACY_BASE_URL `
+              -ChallengePath '/signin' `
+              -ExpectedClientId $env:REGISTRATION_CLIENT_ID
+            Test-AppReadiness `
+              -Client $client `
+              -BaseUrl $env:MODERN_BASE_URL `
+              -ChallengePath '/' `
+              -ExpectedClientId $env:REGISTRATION_CLIENT_ID
+          }
+          finally {
+            $client.Dispose()
+            $handler.Dispose()
           }
 
       - name: Write deployment summary

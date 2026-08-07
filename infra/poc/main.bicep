@@ -128,6 +128,7 @@ resource modernApp 'Microsoft.Web/sites@2025-03-01' = {
       appCommandLine: 'Croesus.ModernBff.exe'
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
+      use32BitWorkerProcess: false
       appSettings: concat([
         {
           name: 'ASPNETCORE_ENVIRONMENT'

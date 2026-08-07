@@ -18,10 +18,15 @@ $ErrorActionPreference = 'Stop'
 
 $provisionPath = Join-Path $PSScriptRoot 'provision-classic-net-bff-deployment.ps1'
 $cleanupPath = Join-Path $PSScriptRoot 'cleanup-classic-net-bff-deployment.ps1'
-$workflowPath = Join-Path (Split-Path -Parent $PSScriptRoot) '.github\workflows\classic-net-bff-poc.yml'
+$repositoryRoot = Split-Path -Parent $PSScriptRoot
+$workflowPath = Join-Path $repositoryRoot '.github\workflows\classic-net-bff-poc.yml'
+$bicepPath = Join-Path $repositoryRoot 'infra\poc\main.bicep'
+$legacyWebConfigPath = Join-Path $repositoryRoot 'poc\legacy-net452\web.config'
 $provisionSource = Get-Content -LiteralPath $provisionPath -Raw
 $cleanupSource = Get-Content -LiteralPath $cleanupPath -Raw
 $workflowSource = Get-Content -LiteralPath $workflowPath -Raw
+$bicepSource = Get-Content -LiteralPath $bicepPath -Raw
+[xml]$legacyWebConfig = Get-Content -LiteralPath $legacyWebConfigPath -Raw
 
 function Get-ScriptAst {
     param([Parameter(Mandatory)][string]$Path)
@@ -74,6 +79,53 @@ function Get-FunctionSource {
 
 $provisionAst = Get-ScriptAst -Path $provisionPath
 $cleanupAst = Get-ScriptAst -Path $cleanupPath
+
+$legacyResourceIndex = $bicepSource.IndexOf(
+    "resource legacyApp 'Microsoft.Web/sites@2025-03-01'",
+    [System.StringComparison]::Ordinal)
+$modernResourceIndex = $bicepSource.IndexOf(
+    "resource modernApp 'Microsoft.Web/sites@2025-03-01'",
+    [System.StringComparison]::Ordinal)
+$outputIndex = $bicepSource.IndexOf(
+    "@description('Name of the shared Windows B1 App Service plan.')",
+    [System.StringComparison]::Ordinal)
+if ($legacyResourceIndex -lt 0 -or $modernResourceIndex -le $legacyResourceIndex -or
+    $outputIndex -le $modernResourceIndex) {
+    throw 'The Bicep App Service resource boundaries could not be identified.'
+}
+$legacyResourceSource = $bicepSource.Substring(
+    $legacyResourceIndex,
+    $modernResourceIndex - $legacyResourceIndex)
+$modernResourceSource = $bicepSource.Substring(
+    $modernResourceIndex,
+    $outputIndex - $modernResourceIndex)
+if ($legacyResourceSource.Contains('use32BitWorkerProcess')) {
+    throw 'The legacy App Service worker bitness must remain unchanged.'
+}
+if (-not $modernResourceSource.Contains('use32BitWorkerProcess: false')) {
+    throw 'The self-contained win-x64 modern App Service must use a 64-bit worker process.'
+}
+
+$assemblyNamespace = [System.Xml.XmlNamespaceManager]::new($legacyWebConfig.NameTable)
+$assemblyNamespace.AddNamespace('asm', 'urn:schemas-microsoft-com:asm.v1')
+$newtonsoftAssembly = $legacyWebConfig.SelectSingleNode(
+    '/configuration/runtime/asm:assemblyBinding/asm:dependentAssembly' +
+    '[asm:assemblyIdentity[@name="Newtonsoft.Json" and ' +
+    '@publicKeyToken="30ad4fe6b2a6aeed"]]',
+    $assemblyNamespace)
+if ($null -eq $newtonsoftAssembly) {
+    throw 'The legacy web.config must identify the Newtonsoft.Json strong-named assembly.'
+}
+$bindingRedirect = $newtonsoftAssembly.SelectSingleNode(
+    'asm:bindingRedirect[@oldVersion="0.0.0.0-13.0.0.0" and @newVersion="13.0.0.0"]',
+    $assemblyNamespace)
+if ($null -eq $bindingRedirect) {
+    throw 'The legacy web.config must redirect Newtonsoft.Json versions through 13.0.0.0.'
+}
+if ($legacyWebConfig.configuration.'system.web'.compilation.targetFramework -cne '4.5.2' -or
+    $legacyWebConfig.configuration.'system.web'.customErrors.mode -cne 'On') {
+    throw 'The legacy binding redirect must preserve net452 and customErrors mode On.'
+}
 
 $invokeGraphSource = Get-FunctionSource -Ast $provisionAst -Name 'Invoke-Graph'
 $callbackFunctionSource = Get-FunctionSource -Ast $provisionAst -Name 'Assert-DeploymentCallbackUri'
@@ -259,6 +311,34 @@ Assert-SourceOrder `
 
 if ($workflowSource -notmatch '\$exists\s+-isnot\s+\[bool\]') {
     throw 'The validation workflow must reject malformed or non-boolean az group exists output.'
+}
+
+foreach ($smokeFragment in @(
+        'REGISTRATION_CLIENT_ID: ${{ steps.infrastructure.outputs.registration_client_id }}',
+        '$handler.AllowAutoRedirect = $false',
+        '$Client.GetAsync("$BaseUrl/api/session")',
+        "-ChallengePath '/signin'",
+        "-ChallengePath '/'",
+        '$redirectStatuses = @(301, 302, 303, 307, 308)',
+        '$location.Host -cne ''login.microsoftonline.com''',
+        '$query[''client_id''] -cne $ExpectedClientId',
+        '$query[''redirect_uri''] -cne $ExpectedRedirectUri',
+        '$expectedRedirectUri = "$BaseUrl/signin-oidc"',
+        '$maxAttempts = 8',
+        '$retryDelaySeconds = 10',
+        'for ($attempt = 1; $attempt -le $maxAttempts; $attempt++)',
+        'if ($attempt -eq $maxAttempts)',
+        'Start-Sleep -Seconds $retryDelaySeconds')) {
+    if (-not $workflowSource.Contains($smokeFragment)) {
+        throw "The deployment readiness smoke contract is missing: $smokeFragment"
+    }
+}
+
+if ($workflowSource.Contains('foreach ($url in @($env:LEGACY_BASE_URL, $env:MODERN_BASE_URL))')) {
+    throw 'The workflow must not regress to root-only smoke checks.'
+}
+if ($workflowSource -match '(?s)Verify authentication redirects.*Invoke-WebRequest') {
+    throw 'The deployment readiness check must use a client with redirects disabled.'
 }
 
 if ($provisionSource -notmatch '\$priorKeyId -eq \$newCredentialKeyId') {
