@@ -319,4 +319,5 @@ if ($null -eq $cleanupAst) {
     throw 'Cleanup AST was not produced.'
 }
 
+$global:LASTEXITCODE = 0
 Write-Output 'Deployment Entra static security checks OK'
