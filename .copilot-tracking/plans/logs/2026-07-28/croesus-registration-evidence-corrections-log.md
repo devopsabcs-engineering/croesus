@@ -44,6 +44,11 @@ Gaps and differences identified between research findings and the implementation
   * Implementation differs: inject `VITE_ENABLE_REPLAY_DEMO: ${{ vars.ENABLE_REPLAY_LAB }}` into the shared build env, gated on the same variable that gates the replay-lab job
   * Rationale: faithful equivalent that keeps a single artifact/deploy path; no separate build step exists
 
+* DD-04: Earlier current-facing analysis treated `.aspx` redirect paths, one visible URL, and PKCE as evidence that Central was a multi-page application rather than a SPA.
+  * Plan previously implied: Central's server-rendered UI made the exported `spa` platform intrinsically incorrect
+  * Implementation differs: Phase 7 records UI topology as unresolved and makes registration correctness depend on the component that redeems the authorization code and safeguards credentials and tokens
+  * Rationale: SPA and BFF are compatible; `.aspx` paths, a single URL, and PKCE do not classify the frontend, and the sampled HAR proves only that `/token` did not occur in that browser transaction
+
 ## Implementation Paths Considered
 
 ### Selected: Phased corrections grouped by validation scope with an optional live-test phase
@@ -108,3 +113,6 @@ Items identified during planning that fall outside current scope.
 * WI-10: Confirm whether a future Central hosting model can supply a supported external OIDC workload token before reconsidering workload identity federation — (medium)
   * Source: Phase 6, Step 6.2
   * Dependency: Croesus hosting and workload-identity roadmap
+* WI-11: Obtain the Q15 evidence needed to classify Central's UI topology and confirm the reported BFF boundary — (high)
+  * Source: Phase 7, Steps 7.1-7.3
+  * Dependency: Croesus evidence covering document reload versus client routing, JavaScript bundles, Web Forms postbacks, PKCE-verifier ownership, browser token visibility, session-cookie properties, and backend mediation of downstream API calls
