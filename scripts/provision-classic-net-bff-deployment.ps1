@@ -86,8 +86,13 @@ function Invoke-Graph {
             $isTransientResourceNotFound =
                 $httpStatus -ceq '404' -and
                 $graphCode -ceq 'Request_ResourceNotFound'
+            $isTransientDirectoryConcurrencyViolation =
+                $graphCode -ceq 'Directory_ConcurrencyViolation'
+            $isTransientGraphFailure =
+                $isTransientResourceNotFound -or
+                $isTransientDirectoryConcurrencyViolation
 
-            if (-not $isTransientResourceNotFound -or $attempt -eq $maxAttempts) {
+            if (-not $isTransientGraphFailure -or $attempt -eq $maxAttempts) {
                 throw "Microsoft Graph request failed: $Method $Uri (Azure CLI exit code $exitCode; HTTP status $httpStatus; Graph code $graphCode)."
             }
 

@@ -169,8 +169,21 @@ if (($script:mockSleepSeconds -join ',') -cne '2,4,8') {
     throw "Invoke-Graph retry delays must be exactly 2,4,8 seconds; observed $($script:mockSleepSeconds -join ',')."
 }
 
+$transientConcurrencyViolation = 'ERROR: Graph failure({"error":{"code":"Directory_ConcurrencyViolation","message":"DO_NOT_LOG_RAW_CONCURRENCY_MESSAGE"}})'
+Initialize-GraphMockState `
+    -Results @($transientConcurrencyViolation, $transientConcurrencyViolation, '{"value":[]}') `
+    -ExitCodes @(1, 1, 0)
+$retryResult = Invoke-Graph -Method POST -Uri 'https://graph.microsoft.com/v1.0/applications/test-object-id/removePassword'
+if ($script:mockAzAttemptCount -ne 3 -or @($retryResult.value).Count -ne 0) {
+    throw 'Invoke-Graph must retry the exact Directory_ConcurrencyViolation Graph code without an HTTP status.'
+}
+if (($script:mockSleepSeconds -join ',') -cne '2,4') {
+    throw "Directory_ConcurrencyViolation retry delays must follow the bounded schedule; observed $($script:mockSleepSeconds -join ',')."
+}
+
 foreach ($nonTransientResult in @(
         'ERROR: Not Found({"error":{"code":"Request_ResourceNotFoundExtra","message":"wrong code"}})',
+        'ERROR: Graph failure({"error":{"code":"Directory_ConcurrencyViolationExtra","message":"wrong code"}})',
         'ERROR: Bad Request({"error":{"code":"Request_ResourceNotFound","message":"wrong status"}})',
         'ERROR: Forbidden({"error":{"code":"Authorization_RequestDenied","message":"DO_NOT_LOG_RAW_PAYLOAD"}})')) {
     Initialize-GraphMockState -Results @($nonTransientResult) -ExitCodes @(1)
@@ -249,10 +262,13 @@ foreach ($retryFragment in @(
         '$maxAttempts = 4',
         '$result = & az @arguments 2>&1',
         '$exitCode = $LASTEXITCODE',
-    '$hasSemanticNotFound = [regex]::IsMatch(',
+        '$hasSemanticNotFound = [regex]::IsMatch(',
         '$httpStatus -ceq ''404''',
         '$graphCode -ceq ''Request_ResourceNotFound''',
-        '-not $isTransientResourceNotFound -or $attempt -eq $maxAttempts',
+        '$graphCode -ceq ''Directory_ConcurrencyViolation''',
+        '$isTransientResourceNotFound -or',
+        '$isTransientDirectoryConcurrencyViolation',
+        '-not $isTransientGraphFailure -or $attempt -eq $maxAttempts',
         '$delaySeconds = [math]::Pow(2, $attempt)',
         'Start-Sleep -Seconds $delaySeconds')) {
     if (-not $invokeGraphSource.Contains($retryFragment)) {
@@ -274,7 +290,9 @@ Assert-SourceOrder `
         'if ($exitCode -eq 0)',
         'return $resultText | ConvertFrom-Json',
         '$isTransientResourceNotFound =',
-        'if (-not $isTransientResourceNotFound -or $attempt -eq $maxAttempts)',
+        '$isTransientDirectoryConcurrencyViolation =',
+        '$isTransientGraphFailure =',
+        'if (-not $isTransientGraphFailure -or $attempt -eq $maxAttempts)',
         'throw "Microsoft Graph request failed:',
         '$delaySeconds = [math]::Pow(2, $attempt)',
         'Start-Sleep -Seconds $delaySeconds',
