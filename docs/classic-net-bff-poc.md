@@ -82,6 +82,190 @@ The provisioning scripts use `az account show` for the authenticated tenant and
 `az ad sp create-for-rbac`, create subscription scopes, or assign Azure resource
 roles.
 
+## Deploy the App Service comparison environment
+
+The `classic-net-bff-poc` workflow provides an isolated hosted comparison. It
+deploys exactly one Windows B1 App Service plan, two web apps on that shared
+worker, and one confidential Microsoft Entra `web` registration with both
+callbacks. It does not change the existing Linux OBO demonstration.
+
+Resource names are deterministic for a subscription, resource group, and
+`name_prefix`. The workflow creates `<name-prefix>-rg`; Bicep derives the plan,
+legacy app, modern app, and registration display name from a stable
+`uniqueString` suffix. The registration carries the ownership tag
+`Croesus.ClassicNetBffDeployment.v1`, which provisioning and teardown verify
+before they reuse or delete it.
+
+### Bootstrap GitHub and Microsoft Entra
+
+Create a protected GitHub environment named exactly `poc-demo` and require an
+appropriate reviewer. Configure these public GitHub variables:
+
+* `AZURE_CLIENT_ID`: application ID of the GitHub OIDC bootstrap identity
+* `AZURE_TENANT_ID`: home Microsoft Entra tenant GUID
+* `AZURE_SUBSCRIPTION_ID`: target Azure subscription GUID
+
+Define the variables on `poc-demo` for protected deploy and teardown jobs. If
+the validation job must run its optional Azure what-if, also define them as
+repository variables because that job does not enter the protected environment.
+No GitHub secret is required. The workflows request only `contents: read` and
+`id-token: write`, then `azure/login` exchanges GitHub's short-lived OIDC token
+for Azure and Microsoft Graph access.
+
+Configure a federated identity credential on the bootstrap registration for
+the repository and the `poc-demo` environment subject. The exact subject is
+`repo:<owner>/<repository>:environment:poc-demo`. A separate branch or pull
+request credential does not authorize the protected jobs unless its subject
+also matches the job context.
+
+The bootstrap service principal needs Azure permissions for the operations the
+workflows perform:
+
+* Create, read, and delete the deterministic resource group
+* Validate, run what-if, and create resource-group deployments
+* Create, configure, and deploy the App Service plan and both web apps
+
+Do not grant blanket subscription Contributor for this PoC. One option is a
+custom role at subscription scope limited to the required resource-group,
+deployment, and `Microsoft.Web` actions. Another is to have an administrator
+precreate the deterministic resource group, scope Contributor to that group,
+and retain resource-group deletion as an administrator-owned teardown step.
+The second option requires adapting the checked-in teardown workflow because it
+currently deletes the resource group itself.
+
+Grant the bootstrap registration the Microsoft Graph application permission
+`Application.ReadWrite.All` and have a tenant administrator grant consent. The
+deployment scripts use it to query, create, patch, and delete applications;
+add and remove application passwords; and query, create, and delete the home
+tenant service principal. They do not need `Directory.ReadWrite.All` and do not
+assign Azure roles. `Application.ReadWrite.OwnedBy` is insufficient for the
+current convergence path because the workflow can reuse an exactly named,
+ownership-tagged registration rather than only objects owned by the bootstrap
+identity.
+
+> [!IMPORTANT]
+> This setup has a bootstrap paradox. GitHub OIDC cannot create its own trusted
+> bootstrap registration, federated credential, Azure role assignment, Graph
+> application permission, or tenant-admin consent. A tenant and subscription
+> administrator must establish those controls out of band before the workflow
+> can run. Do not solve that boundary with `az ad sp create-for-rbac`, a stored
+> deployment secret, or subscription-wide Contributor.
+
+### Choose validation or deployment
+
+Run the `classic-net-bff-poc` workflow manually. Its inputs are:
+
+* `operation`: `validate` by default, or `deploy`
+* `tenant_mode`: `single-tenant` by default, or `organizations`
+* `allowed_tenant_ids`: comma-separated tenant GUIDs, required for
+  `organizations`
+* `name_prefix`: lowercase deterministic prefix, 3-24 characters
+* `location`: `canadaeast`, `eastus2`, or `westus2`
+* `credential_lifetime_days`: 1-7 days, with 1 day as the default
+
+Validation mode builds, tests, and publishes both applications, compiles Bicep,
+parses PowerShell, runs the static security suites, and uploads secret-free
+packages for three days. It never creates Microsoft Entra objects or Azure
+resources. When all three public OIDC variables are available, it runs what-if
+only if the deterministic resource group already exists; it does not create the
+group for validation.
+
+Deploy mode repeats validation, enters `poc-demo` for approval, signs in with
+OIDC, creates the deterministic resource group, and runs a full-resource-payload
+what-if. The workflow derives both app names and callbacks from that result,
+converges the tagged registration, deploys Bicep with the secret as a secure
+parameter, deploys both packages, and checks each root URL without following
+redirects. The smoke check accepts an authentication redirect or `401`; it does
+not complete an interactive user sign-in.
+
+The legacy package remains compiled for .NET Framework 4.5.2. Windows App
+Service runs that assembly on its installed .NET Framework 4.8 runtime. The
+modern package is a self-contained `win-x64` deployment with
+`Croesus.ModernBff.exe` as its startup command, so it does not depend on App
+Service offering a shared .NET 10 runtime.
+
+### Understand credential rotation
+
+Every deployment creates one replacement credential named
+`<registration-display-name> GitHub deployment demo` with a maximum lifetime of
+seven days. The script masks the returned value immediately, stores it only in
+the current PowerShell process environment, deploys it through Bicep's secure
+parameter, and clears it in `finally`. It never writes the value to state,
+workflow outputs, summaries, packages, or artifacts.
+
+After the new credential is created, masked, and recorded by key ID, the script
+removes older credentials with that deterministic name. Rerun deploy before the
+credential expires to rotate it. The two app settings are updated together by
+the same Bicep deployment, but this remains a PoC exception rather than a
+production key-synchronization design.
+
+### Run the browser comparison
+
+Use the deployment summary links and compare one host at a time:
+
+1. Open the legacy URL in a private browser window and sign in with an allowed
+   test account.
+2. Confirm the protected page shows authenticated session state, display name,
+   and tenant ID without exposing an OAuth token, authorization code, PKCE
+   verifier, client secret, or raw cookie.
+3. Sign out and close the private window.
+4. Open the modern URL in a new private window and repeat the same checks.
+5. Compare callback routing, sign-in and sign-out behavior, and the visible
+   session projection. Record only the privacy-safe evidence listed later in
+   this guide.
+
+Do not use a browser HAR as demo evidence. Developer tools, workflow logs, and
+screenshots must not contain tokens, codes, credentials, or raw cookie values.
+
+### Use organizational multitenancy
+
+Select `organizations` only with an explicit `allowed_tenant_ids` list that
+contains the home tenant and every approved customer tenant. The workflow
+converges the registration to `AzureADMultipleOrgs`; both apps still reject a
+validated issuer whose tenant is absent from the allowlist.
+
+The publisher owns the application registration and home-tenant service
+principal. A customer tenant creates its own enterprise application (service
+principal) when an administrator or authorized user grants consent. Customer
+tenant policy determines whether user consent is allowed or administrator
+consent is required. The workflow does not automate customer consent, create or
+delete customer service principals, or grant permissions in customer tenants.
+
+### Tear down the hosted PoC
+
+Run `teardown-classic-net-bff-poc` manually with the same `name_prefix`. Enter
+the case-sensitive confirmation `destroy:<name-prefix>`. The workflow enters
+the protected `poc-demo` environment, verifies the deterministic Azure context,
+resolves the exact registration display name through Bicep what-if, and then
+deletes only an exact registration carrying the workflow ownership tag. It
+verifies application and home service-principal identity before deletion.
+
+The workflow requests asynchronous deletion of `<name-prefix>-rg`. It does not
+delete the GitHub OIDC bootstrap identity, its federated credential or Graph
+consent, the `poc-demo` environment, or service principals created through
+consent in customer tenants. Remove or retain those bootstrap controls through
+your normal repository and tenant governance process.
+
+### Hosted PoC caveats
+
+* B1 is a demonstration tier, not a production scale or resilience target
+* Both apps share one worker, so contention or recycle affects the comparison
+* The stack has no deployment slots, high availability, monitoring, private
+  networking, or production operations model
+* The `net452` compile target runs on App Service's installed .NET Framework
+  4.8 runtime; this does not retarget or support the legacy application
+* The modern app is self-contained for `win-x64` because platform runtime
+  availability can lag SDK releases
+* The explicit `Poc` client-secret exception is temporary and must not become
+  Production policy
+* Production should use a certificate or managed-identity-backed client
+  credential, stronger availability and monitoring, and tested credential or
+  key synchronization where multiple instances are involved
+
+The repository validation is offline. It does not claim that a live Azure
+deployment, Microsoft Graph mutation, hosted interactive sign-in, or teardown
+was tested.
+
 ## Provision the single-tenant registration
 
 Run these commands from the repository root. The default audience is

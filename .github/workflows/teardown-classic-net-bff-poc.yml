@@ -1,0 +1,128 @@
+name: teardown-classic-net-bff-poc
+
+on:
+  workflow_dispatch:
+    inputs:
+      name_prefix:
+        description: Lowercase deterministic deployment prefix used during deployment
+        required: true
+        default: croesus-bff-poc
+        type: string
+      confirmation:
+        description: Type destroy:<name-prefix> to confirm permanent teardown
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+jobs:
+  teardown:
+    name: Delete protected PoC environment
+    runs-on: windows-latest
+    environment: poc-demo
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Validate destructive confirmation
+        id: target
+        shell: pwsh
+        env:
+          INPUT_CONFIRMATION: ${{ inputs.confirmation }}
+          INPUT_NAME_PREFIX: ${{ inputs.name_prefix }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:INPUT_NAME_PREFIX -notmatch '^[a-z][a-z0-9-]{1,22}[a-z0-9]$') {
+            throw 'name_prefix must be 3-24 lowercase letters, digits, or hyphens; it must start with a letter and end with a letter or digit.'
+          }
+          $expectedConfirmation = "destroy:$($env:INPUT_NAME_PREFIX)"
+          if ($env:INPUT_CONFIRMATION -cne $expectedConfirmation) {
+            throw "Confirmation must exactly match: $expectedConfirmation"
+          }
+          "resource_group=$($env:INPUT_NAME_PREFIX)-rg" >> $env:GITHUB_OUTPUT
+
+      - name: Azure login with OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve and verify deterministic deployment identity
+        id: identity
+        shell: pwsh
+        env:
+          INPUT_NAME_PREFIX: ${{ inputs.name_prefix }}
+          RESOURCE_GROUP: ${{ steps.target.outputs.resource_group }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exists = az group exists --name $env:RESOURCE_GROUP | ConvertFrom-Json
+          if (-not $exists) {
+            throw "Resource group '$env:RESOURCE_GROUP' does not exist. Teardown will not guess a directory-object target without the deterministic Azure deployment context."
+          }
+
+          $whatIfJson = az deployment group what-if `
+            --resource-group $env:RESOURCE_GROUP `
+            --name "classic-bff-teardown-$env:GITHUB_RUN_ID" `
+            --template-file .\infra\poc\main.bicep `
+            --result-format FullResourcePayloads `
+            --no-pretty-print `
+            --output json `
+            --parameters `
+              namePrefix=$env:INPUT_NAME_PREFIX `
+              tenantId=$env:AZURE_TENANT_ID `
+              clientId=$env:AZURE_CLIENT_ID `
+              authenticationMode=SingleTenant `
+              allowedTenantIds='[]' `
+              clientSecret=teardown-preflight-placeholder
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $whatIf = $whatIfJson | ConvertFrom-Json
+          $changes = if ($null -ne $whatIf.changes) { @($whatIf.changes) } else { @($whatIf.properties.changes) }
+          $legacyAppName = $changes |
+            Where-Object { $_.resourceId -match '/providers/Microsoft.Web/sites/[^/]+-legacy$' } |
+            ForEach-Object { ($_.resourceId -split '/')[-1] } |
+            Select-Object -First 1
+          if (-not $legacyAppName -or $legacyAppName -notmatch '^croesus-bff-(?<suffix>[a-z0-9]+)-legacy$') {
+            throw 'Bicep what-if did not resolve the deterministic legacy app name.'
+          }
+          "display_name=croesus-bff-$($Matches.suffix)-web" >> $env:GITHUB_OUTPUT
+
+      - name: Delete owned Entra objects and deterministic resource group
+        shell: pwsh
+        env:
+          DISPLAY_NAME: ${{ steps.identity.outputs.display_name }}
+          RESOURCE_GROUP: ${{ steps.target.outputs.resource_group }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\scripts\cleanup-classic-net-bff-deployment.ps1 `
+            -DisplayName $env:DISPLAY_NAME `
+            -Confirm:$false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          az group delete --name $env:RESOURCE_GROUP --yes --no-wait --only-show-errors
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Write teardown summary
+        if: always()
+        shell: pwsh
+        env:
+          DISPLAY_NAME: ${{ steps.identity.outputs.display_name }}
+          RESOURCE_GROUP: ${{ steps.target.outputs.resource_group }}
+        run: |
+          @"
+          ## Classic .NET BFF teardown
+
+          * Resource group deletion requested: ``$env:RESOURCE_GROUP``
+          * Workflow-managed Entra application checked: ``$env:DISPLAY_NAME``
+          * Azure deletion is asynchronous and may remain visible briefly in the portal
+
+          Cleanup verifies the exact display name, workflow ownership tag, application object ID, client ID, and home-tenant service principal before deletion. It does not delete the GitHub OIDC bootstrap identity or service principals in customer tenants.
+          "@ >> $env:GITHUB_STEP_SUMMARY

@@ -80,11 +80,11 @@ namespace Croesus.LegacyNet452.Configuration
 
             Uri parsedRedirectUri;
             Uri parsedPostLogoutRedirectUri;
-            if (!TryValidateLocalHttpsUri(redirectUri, out parsedRedirectUri) ||
-                !TryValidateLocalHttpsUri(postLogoutRedirectUri, out parsedPostLogoutRedirectUri))
+            if (!TryValidateAbsoluteHttpsUri(redirectUri, out parsedRedirectUri) ||
+                !TryValidateAbsoluteHttpsUri(postLogoutRedirectUri, out parsedPostLogoutRedirectUri))
             {
                 throw new ConfigurationErrorsException(
-                    "Redirect URIs must use HTTPS on localhost.");
+                    "Redirect URIs must be well-formed absolute HTTPS URIs without user info or fragments.");
             }
 
             var organizationsMode = string.Equals(
@@ -152,11 +152,13 @@ namespace Croesus.LegacyNet452.Configuration
             return result;
         }
 
-        private static bool TryValidateLocalHttpsUri(string value, out Uri uri)
+        private static bool TryValidateAbsoluteHttpsUri(string value, out Uri uri)
         {
             return Uri.TryCreate(value, UriKind.Absolute, out uri) &&
-                string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.Ordinal) &&
-                string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase);
+            uri.IsWellFormedOriginalString() &&
+            string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
+            string.IsNullOrEmpty(uri.UserInfo) &&
+            string.IsNullOrEmpty(uri.Fragment);
         }
 
         private static string RequiredSetting(string name)

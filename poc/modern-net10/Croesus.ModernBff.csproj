@@ -8,6 +8,9 @@
     <AssemblyName>Croesus.ModernBff</AssemblyName>
     <UserSecretsId>croesus-modern-bff-poc</UserSecretsId>
     <DefaultItemExcludes>$(DefaultItemExcludes);Tests/**</DefaultItemExcludes>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <PublishSelfContained>true</PublishSelfContained>
+    <UseAppHost>true</UseAppHost>
   </PropertyGroup>
 
   <ItemGroup>

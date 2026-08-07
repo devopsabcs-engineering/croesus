@@ -78,6 +78,39 @@ namespace Croesus.LegacyNet452.Tests
             Assert.False(settings.IsTenantAllowed(Guid.Parse(TestSettings.HomeTenantId)));
         }
 
+        [Fact]
+        public void AcceptsAbsoluteHttpsDeploymentCallbacks()
+        {
+            var settings = CreateSettings(
+                "https://croesus-legacy.azurewebsites.net/signin-oidc",
+                "https://croesus-legacy.azurewebsites.net/");
+
+            Assert.Equal(
+                "https://croesus-legacy.azurewebsites.net/signin-oidc",
+                settings.RedirectUri);
+            Assert.Equal(
+                "https://croesus-legacy.azurewebsites.net/",
+                settings.PostLogoutRedirectUri);
+        }
+
+        [Theory]
+        [InlineData("http://croesus-legacy.azurewebsites.net/signin-oidc")]
+        [InlineData("/signin-oidc")]
+        [InlineData("not a URI")]
+        [InlineData("https://user:password@croesus-legacy.azurewebsites.net/signin-oidc")]
+        [InlineData("https://croesus-legacy.azurewebsites.net/signin-oidc#fragment")]
+        public void RejectsInvalidDeploymentCallbacks(string redirectUri)
+        {
+            var exception = Assert.Throws<ConfigurationErrorsException>(
+                () => CreateSettings(
+                    redirectUri,
+                    "https://croesus-legacy.azurewebsites.net/"));
+
+            Assert.Equal(
+                "Redirect URIs must be well-formed absolute HTTPS URIs without user info or fragments.",
+                exception.Message);
+        }
+
         private static Configuration.LegacyAuthenticationSettings CreateSettings(
             string clientId,
             string tenantId,
@@ -90,6 +123,20 @@ namespace Croesus.LegacyNet452.Tests
                 allowedTenantIds,
                 "https://localhost:44352/signin-oidc",
                 "https://localhost:44352/",
+                Guid.NewGuid().ToString("N"));
+        }
+
+        private static Configuration.LegacyAuthenticationSettings CreateSettings(
+            string redirectUri,
+            string postLogoutRedirectUri)
+        {
+            return Configuration.LegacyAuthenticationSettings.CreateAndValidate(
+                "22222222-2222-2222-2222-222222222222",
+                TestSettings.HomeTenantId,
+                "SingleTenant",
+                string.Empty,
+                redirectUri,
+                postLogoutRedirectUri,
                 Guid.NewGuid().ToString("N"));
         }
     }

@@ -7,7 +7,12 @@
     <DefaultItemExcludes>$(DefaultItemExcludes);Tests/**</DefaultItemExcludes>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <OutputPath>bin\</OutputPath>
+    <IsPublishable>true</IsPublishable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Update="web.config" CopyToPublishDirectory="Always" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net452" Version="1.0.3" PrivateAssets="all" />
@@ -15,5 +20,13 @@
     <PackageReference Include="Microsoft.Owin.Security.Cookies" Version="4.2.3" />
     <PackageReference Include="Microsoft.Owin.Security.OpenIdConnect" Version="4.2.3" />
   </ItemGroup>
+
+  <Target Name="PrepareIisPublishLayout" AfterTargets="Publish">
+    <ItemGroup>
+      <IisPublishAssembly Include="$(PublishDir)*.dll;$(PublishDir)*.pdb" />
+    </ItemGroup>
+    <MakeDir Directories="$(PublishDir)bin" />
+    <Move SourceFiles="@(IisPublishAssembly)" DestinationFolder="$(PublishDir)bin" />
+  </Target>
 
 </Project>

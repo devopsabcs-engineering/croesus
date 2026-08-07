@@ -103,23 +103,27 @@ internal sealed class BffAuthenticationSettings
         var hasClientSecret = !string.IsNullOrWhiteSpace(configuration["AzureAd:ClientSecret"]);
         var hasClientCredential = configuration.GetSection("AzureAd:ClientCredentials").GetChildren().Any()
             || configuration.GetSection("AzureAd:ClientCertificates").GetChildren().Any();
-        if (environmentName.Equals(Environments.Development, StringComparison.OrdinalIgnoreCase))
+        var permitsClientSecret = environmentName.Equals(
+                Environments.Development,
+                StringComparison.OrdinalIgnoreCase)
+            || environmentName.Equals("Poc", StringComparison.OrdinalIgnoreCase);
+        if (permitsClientSecret)
         {
             if (!hasClientSecret && !hasClientCredential)
             {
-                failures.Add("Development requires AzureAd:ClientSecret from user secrets or the environment, or a configured client credential.");
+                failures.Add("Development and Poc require AzureAd:ClientSecret from secure configuration, or a configured client credential.");
             }
         }
         else
         {
             if (hasClientSecret)
             {
-                failures.Add("AzureAd:ClientSecret is permitted only in Development.");
+                failures.Add("AzureAd:ClientSecret is permitted only in Development or Poc.");
             }
 
             if (!hasClientCredential)
             {
-                failures.Add("Non-development environments require a certificate or managed-identity-backed client credential.");
+                failures.Add("Environments other than Development or Poc require a certificate or managed-identity-backed client credential.");
             }
         }
 
