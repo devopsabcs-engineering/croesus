@@ -1,6 +1,6 @@
 using System;
 using Microsoft.Owin;
-using Microsoft.Owin.Host.SystemWeb;
+using Microsoft.Owin.Infrastructure;
 using Microsoft.Owin.Security.Cookies;
 
 namespace Croesus.LegacyNet452.Authentication
@@ -19,7 +19,7 @@ namespace Croesus.LegacyNet452.Authentication
                 CookieHttpOnly = true,
                 CookieSecure = CookieSecureOption.Always,
                 CookieSameSite = SameSiteMode.Lax,
-                CookieManager = new SystemWebCookieManager(),
+                CookieManager = new CookieManager(),
                 ExpireTimeSpan = TimeSpan.FromMinutes(30),
                 SlidingExpiration = false,
                 Provider = new CookieAuthenticationProvider

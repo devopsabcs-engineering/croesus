@@ -76,6 +76,8 @@ protection survive cross-instance callbacks. Protect and rotate those keys as
 credentials.
 
 The cookie uses `Secure=Always`, HTTP-only access, `SameSite=Lax`, a fixed
-30-minute lifetime, and `SystemWebCookieManager`. Validate SameSite behavior on
-the exact supported browser set because .NET Framework 4.5.2 predates current
-browser semantics.
+30-minute lifetime, and Katana's header-based `CookieManager`. This manager is
+selected explicitly to avoid the Katana 4.2.3 `SystemWebCookieManager`
+compatibility failure when System.Web applies a cookie after response
+commitment. Validate SameSite behavior on the exact supported browser set
+because .NET Framework 4.5.2 predates current browser semantics.

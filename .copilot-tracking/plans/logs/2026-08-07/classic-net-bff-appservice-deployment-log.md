@@ -69,6 +69,10 @@ Gaps and deviations identified during implementation.
   * Plan specifies: Complete the legacy authorization-code callback after host registration is corrected.
   * Implementation differs: The Katana cookie provider records only component, enum phase, exception type, HRESULT, and recognized protocol code while preserving rethrow behavior.
   * Rationale: The post-correction callback changed to `HttpException` with no protocol code and IIS `404.0`; the phase marker distinguishes cookie issuance from later host finalization without exposing authentication material.
+* DD-15: Legacy session cookies use Katana's header-based cookie manager.
+  * Plan specifies: Issue a protected server-side session cookie after authorization-code redemption.
+  * Implementation differs: The application explicitly selects `Microsoft.Owin.Infrastructure.CookieManager` instead of `SystemWebCookieManager` while retaining every cookie security and lifetime setting.
+  * Rationale: The live diagnostic confirmed `ApplyResponseGrant`, `HttpException`, and HRESULT `0x80004005`; Katana 4.2.3's System.Web manager uses the incompatible late `HttpResponse.AppendCookie` path.
 
 ## Suggested Follow-On Work
 

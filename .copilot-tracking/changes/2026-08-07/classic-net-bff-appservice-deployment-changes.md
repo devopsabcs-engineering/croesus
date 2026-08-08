@@ -27,6 +27,7 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
 * `poc/legacy-net452/Tests/AuthenticationEventLoggerTests.cs` - Regression coverage for bounded wrapped protocol-code classification and secret-bearing exception text
 * `poc/modern-net10/Tests/SessionResponseTests.cs` - Regression coverage for normalized short tenant-claim precedence
 * `.copilot-tracking/research/subagents/2026-08-08/legacy-katana-oidc-callback-invalidoperation.md` - Focused analysis of the legacy SystemWeb callback failure and its bounded falsification path
+* `.copilot-tracking/research/subagents/2026-08-08/katana-apply-response-grant.md` - Root-cause analysis of the confirmed Katana cookie response-grant failure
 
 ### Modified
 
@@ -69,6 +70,9 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
 * `poc/legacy-net452/Telemetry/AuthenticationEventLogger.cs` - Adds bounded component, phase, exception type, HRESULT, and protocol-code classification
 * `poc/legacy-net452/Tests/CookieOptionsFactoryTests.cs` - Verifies the cookie diagnostic callback preserves both rethrow states
 * `poc/legacy-net452/Tests/AuthenticationEventLoggerTests.cs` - Verifies phase diagnostics exclude secret-bearing exception text
+* `poc/legacy-net452/Authentication/CookieOptionsFactory.cs` - Uses Katana's header-based cookie manager to avoid late System.Web `AppendCookie` failures
+* `poc/legacy-net452/Tests/CookieOptionsFactoryTests.cs` - Requires header-based cookie custody while preserving all session security and lifetime settings
+* `poc/legacy-net452/README.md` - Documents the Katana 4.2.3 and System.Web cookie-manager compatibility boundary
 
 ### Removed
 
@@ -106,6 +110,8 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
   * Reason: Katana 4.2.3 already registers the module through pre-application startup; duplicate registration is the narrowest explanation for a SystemWeb finalization invariant failure during `EndRequest`.
 * Added a cookie-phase diagnostic after the corrected host changed the callback failure to `HttpException` with no protocol code and IIS `404.0`.
   * Reason: the cookie provider's fixed `ApplyResponseGrant` phase marker separates session-cookie issuance failures from later SystemWeb host finalization without logging request or identity material.
+* Replaced `SystemWebCookieManager` after the live phase diagnostic confirmed `ApplyResponseGrant`, `HttpException`, and HRESULT `0x80004005`.
+  * Reason: Katana 4.2.3 calls System.Web `HttpResponse.AppendCookie` after response commitment; the header-based manager preserves cookie policy while avoiding that incompatible late-write path.
 
 ## Release Summary
 
@@ -145,6 +151,7 @@ Validation:
 * Legacy controlled callback handling emitted only `AuthenticationFailed category=InvalidOperationException protocolCode=none`
 * Duplicate OWIN registration correction passed the deployment static suite and all 41 legacy Release tests
 * Cookie-phase diagnostics passed 7 focused tests and all 44 legacy Release tests
+* Header-based cookie manager correction passed 3 focused tests and all 44 legacy Release tests
 * Both published IIS configurations contain a bounded `maxQueryString` of 8192 and retain their required OWIN or ANCM routing
 * Corrected deployment run `31233311155` completed both validation and protected deployment jobs successfully
 * Both deployed callback routes reached application-controlled handling with 2,100-character and 6,000-character query strings; IIS retained the intended rejection above the 8192-character bound
