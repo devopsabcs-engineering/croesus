@@ -5,6 +5,7 @@ using Croesus.LegacyNet452.Authentication;
 using Croesus.LegacyNet452.Configuration;
 using Croesus.LegacyNet452.Web;
 using Microsoft.Owin;
+using Microsoft.Owin.Extensions;
 using Microsoft.Owin.Security;
 using Microsoft.Owin.Security.OpenIdConnect;
 using Newtonsoft.Json;
@@ -39,6 +40,7 @@ namespace Croesus.LegacyNet452
                 CookieOptionsFactory.AuthenticationType);
             app.UseCookieAuthentication(CookieOptionsFactory.Create());
             app.UseOpenIdConnectAuthentication(oidcOptions);
+            app.UseStageMarker(PipelineStage.Authenticate);
 
             app.Use(async (context, next) =>
             {

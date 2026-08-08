@@ -72,7 +72,11 @@ Gaps and deviations identified during implementation.
 * DD-15: Legacy session cookies use Katana's header-based cookie manager.
   * Plan specifies: Issue a protected server-side session cookie after authorization-code redemption.
   * Implementation differs: The application explicitly selects `Microsoft.Owin.Infrastructure.CookieManager` instead of `SystemWebCookieManager` while retaining every cookie security and lifetime setting.
-  * Rationale: The live diagnostic confirmed `ApplyResponseGrant`, `HttpException`, and HRESULT `0x80004005`; Katana 4.2.3's System.Web manager uses the incompatible late `HttpResponse.AppendCookie` path.
+  * Rationale: The manager preserves the cookie policy and avoids `HttpResponse.AppendCookie`, but the live result from commit `450a1c8` proved that manager substitution alone does not permit writes after response commitment.
+* DD-16: Legacy OIDC and cookie middleware now share the IIS authentication stage.
+  * Plan specifies: Complete the legacy authorization-code callback through the configured OWIN pipeline.
+  * Implementation differs: A post-OIDC `PipelineStage.Authenticate` marker groups OIDC with cookie middleware in the `AuthenticateRequest` segment while preserving cookie-before-OIDC registration order.
+  * Rationale: Katana's cookie extension inserts an authentication marker immediately, while unmarked OIDC otherwise runs at `PreRequestHandlerExecute`; the split caused the earlier cookie segment to apply the queued sign-in grant after the callback response was committed.
 
 ## Suggested Follow-On Work
 
@@ -86,8 +90,8 @@ Gaps and deviations identified during implementation.
   * Source: Hosted run 31215402276
   * Dependency: None
 * WI-04: Retry interactive sign-in to the corrected legacy app and verify authorization-code redemption and session establishment. (medium)
-  * Source: Successful deployment run 31225818740
-  * Dependency: A validated deployment without duplicate OWIN module registration and an authorized tenant user in an interactive browser session
+  * Source: Phase 8 cookie-grant and integrated-pipeline diagnostics
+  * Dependency: Deployment of the post-OIDC authentication stage marker and an authorized tenant user in a fresh interactive browser session
 
 ## User Decisions
 

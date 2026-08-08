@@ -21,12 +21,14 @@ $cleanupPath = Join-Path $PSScriptRoot 'cleanup-classic-net-bff-deployment.ps1'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $workflowPath = Join-Path $repositoryRoot '.github\workflows\classic-net-bff-poc.yml'
 $bicepPath = Join-Path $repositoryRoot 'infra\poc\main.bicep'
+$legacyStartupPath = Join-Path $repositoryRoot 'poc\legacy-net452\Startup.cs'
 $legacyWebConfigPath = Join-Path $repositoryRoot 'poc\legacy-net452\web.config'
 $modernWebConfigPath = Join-Path $repositoryRoot 'poc\modern-net10\web.config'
 $provisionSource = Get-Content -LiteralPath $provisionPath -Raw
 $cleanupSource = Get-Content -LiteralPath $cleanupPath -Raw
 $workflowSource = Get-Content -LiteralPath $workflowPath -Raw
 $bicepSource = Get-Content -LiteralPath $bicepPath -Raw
+$legacyStartupSource = Get-Content -LiteralPath $legacyStartupPath -Raw
 [xml]$legacyWebConfig = Get-Content -LiteralPath $legacyWebConfigPath -Raw
 [xml]$modernWebConfig = Get-Content -LiteralPath $modernWebConfigPath -Raw
 
@@ -81,6 +83,15 @@ function Get-FunctionSource {
 
 $provisionAst = Get-ScriptAst -Path $provisionPath
 $cleanupAst = Get-ScriptAst -Path $cleanupPath
+
+Assert-SourceOrder `
+    -Source $legacyStartupSource `
+    -Fragments @(
+        'using Microsoft.Owin.Extensions;',
+        'app.UseCookieAuthentication(CookieOptionsFactory.Create());',
+        'app.UseOpenIdConnectAuthentication(oidcOptions);',
+        'app.UseStageMarker(PipelineStage.Authenticate);') `
+    -Message 'Legacy authentication must keep cookie before OIDC and stage both at AuthenticateRequest.'
 
 $legacyResourceIndex = $bicepSource.IndexOf(
     "resource legacyApp 'Microsoft.Web/sites@2025-03-01'",

@@ -1,7 +1,7 @@
 ---
 title: Legacy .NET Framework 4.5.2 BFF proof
 description: Build and IIS Express guidance for the Katana authorization-code and PKCE comparison host
-ms.date: 2026-08-07
+ms.date: 2026-08-08
 ms.topic: how-to
 ---
 
@@ -77,7 +77,9 @@ credentials.
 
 The cookie uses `Secure=Always`, HTTP-only access, `SameSite=Lax`, a fixed
 30-minute lifetime, and Katana's header-based `CookieManager`. This manager is
-selected explicitly to avoid the Katana 4.2.3 `SystemWebCookieManager`
-compatibility failure when System.Web applies a cookie after response
-commitment. Validate SameSite behavior on the exact supported browser set
-because .NET Framework 4.5.2 predates current browser semantics.
+still selected, but manager substitution alone was insufficient because both
+managers ultimately mutate System.Web-backed response headers. Cookie and OIDC
+middleware are explicitly grouped at `AuthenticateRequest` so callback cookie
+grant application does not occur during late pipeline teardown. Validate
+SameSite behavior on the exact supported browser set because .NET Framework
+4.5.2 predates current browser semantics.
