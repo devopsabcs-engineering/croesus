@@ -95,6 +95,14 @@ Add a repeatable, low-cost Azure demonstration deployment for the .NET Framework
 * [x] Step 7.2: Preserve a direct 401 response for the anonymous legacy session API
 * [x] Step 7.3: Add focused regressions, deploy both packages, and verify callback routing and signed-out behavior
 
+### [ ] Implementation Phase 8: Diagnose Authorization-Code Completion
+
+<!-- depends-on: phase 7 -->
+
+* [x] Step 8.1: Raise the bounded classic ASP.NET query-string limit for the legacy callback
+* [x] Step 8.2: Record secret-safe modern remote-failure categories and protocol error codes
+* [ ] Step 8.3: Validate, redeploy, and complete interactive callback verification
+
 ## Success Criteria
 
 * The Bicep deployment contains exactly one Windows B1 App Service plan and two web apps

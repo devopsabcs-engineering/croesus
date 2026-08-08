@@ -113,3 +113,11 @@ Add IIS request filtering configuration to both published applications with a bo
 Prevent Katana authentication middleware from rewriting the legacy session endpoint's explicit 401 into a challenge. Keep `/signin` as the intentional interactive challenge route. The anonymous root page must render a clear signed-out message instead of `Failed to fetch`.
 
 Add focused regression coverage for both IIS configurations and legacy anonymous response behavior. Publish both applications and inspect the generated artifacts. Redeploy through the existing workflow, then verify that long synthetic callback queries reach application-controlled handling and that anonymous `/api/session` returns a direct 401 with no Entra `Location` header. Interactive authorization-code redemption remains the final browser verification.
+
+## Implementation Phase 8: Diagnose Authorization-Code Completion
+
+The first corrected interactive callback reached the legacy host but failed before OWIN. The App Service event log identified `HttpException`: the real callback exceeded classic ASP.NET's separate `httpRuntime maxQueryStringLength` default even though IIS request filtering admitted it. Add `maxQueryStringLength="8192"` to the existing legacy `httpRuntime` element, matching the bounded IIS `maxQueryString` value.
+
+The modern callback reaches `OnRemoteFailure`, but that handler currently returns a generic response without logging the exception. Add a secret-safe diagnostic classifier that records only the exception type and recognized `IDX` or `AADSTS` numeric code. Never log exception messages, callback queries, authorization codes, tokens, state, nonce, correlation values, credentials, or personally identifiable claims. Add focused tests proving useful classification and redaction boundaries.
+
+Validate both application test suites and published configurations, redeploy through the existing protected workflow, and retry interactive sign-in. If modern still fails, use the new category and protocol code to make the smallest evidence-based correction and repeat validation.

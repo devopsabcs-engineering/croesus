@@ -49,6 +49,10 @@ Gaps and deviations identified during implementation.
   * Plan specifies: Complete interactive sign-in verification after deployment.
   * Implementation differs: Hosted probes verify IIS-to-application routing at 2,100 and 6,000 characters; credential entry remains in the user's browser.
   * Rationale: Authentication credentials and browser session material must not pass through automation or chat tools.
+* DD-10: Real authorization callbacks exposed a second legacy query limit and missing modern failure telemetry.
+  * Plan specifies: An 8192-character IIS request-filtering limit admits code-flow callbacks.
+  * Implementation differs: Phase 8 also aligns classic ASP.NET `httpRuntime` and adds bounded modern failure classification.
+  * Rationale: The legacy event log showed `maxQueryStringLength` rejection before OWIN, while modern deliberately hid its remote-failure category.
 
 ## Suggested Follow-On Work
 

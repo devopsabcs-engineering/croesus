@@ -128,6 +128,13 @@ if ($legacyWebConfig.configuration.'system.web'.compilation.targetFramework -cne
     $legacyWebConfig.configuration.'system.web'.customErrors.mode -cne 'On') {
     throw 'The legacy binding redirect must preserve net452 and customErrors mode On.'
 }
+$legacyHttpRuntime = $legacyWebConfig.SelectSingleNode('/configuration/system.web/httpRuntime')
+if ($null -eq $legacyHttpRuntime -or
+    $legacyHttpRuntime.targetFramework -cne '4.5.2' -or
+    $legacyHttpRuntime.maxQueryStringLength -cne '8192' -or
+    $legacyHttpRuntime.Attributes.Count -ne 2) {
+    throw 'The legacy httpRuntime must bound maxQueryStringLength at 8192 and preserve net452.'
+}
 
 $legacyRequestLimits = $legacyWebConfig.SelectSingleNode(
     '/configuration/system.webServer/security/requestFiltering/requestLimits')

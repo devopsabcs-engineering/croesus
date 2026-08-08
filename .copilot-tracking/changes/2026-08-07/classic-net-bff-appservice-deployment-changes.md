@@ -22,6 +22,8 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
 * `.copilot-tracking/research/subagents/2026-08-07/github-actions-run-31219189056.md` - Read-only evidence for the Graph permission failure that informed the least-privilege bootstrap correction
 * `poc/legacy-net452/Tests/StartupIntegrationTests.cs` - In-memory OWIN coverage for anonymous session responses and explicit sign-in challenges
 * `poc/modern-net10/web.config` - Explicit ANCM V2 routing with a bounded OIDC callback query limit
+* `poc/modern-net10/Security/OidcRemoteFailureDiagnostic.cs` - Bounded remote-failure classification that emits only exception type and recognized protocol code
+* `poc/modern-net10/Tests/OidcRemoteFailureDiagnosticTests.cs` - Regression coverage for wrapped protocol codes and secret-bearing diagnostic input
 
 ### Modified
 
@@ -45,6 +47,9 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
 * `poc/legacy-net452/Tests/LegacyNet452.Tests.csproj` - Adds the OWIN test-server dependency for endpoint behavior coverage
 * `poc/legacy-net452/Tests/OidcOptionsFactoryTests.cs` - Verifies passive middleware with retained code redemption and PKCE settings
 * `scripts/test-classic-net-bff-deployment-entra-static.ps1` - Verifies both bounded IIS limits and modern ANCM process routing
+* `poc/legacy-net452/web.config` - Aligns classic ASP.NET's bounded query-string limit with IIS request filtering
+* `poc/modern-net10/Program.cs` - Records secret-safe OIDC remote-failure classifications while preserving the generic browser response
+* `scripts/test-classic-net-bff-deployment-entra-static.ps1` - Verifies the classic ASP.NET query limit remains bounded at 8192
 
 ### Removed
 
@@ -72,6 +77,8 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
   * Reason: the modern `win-x64` executable required a 64-bit worker, and the legacy challenge path required a Newtonsoft.Json binding redirect.
 * Reopened implementation after interactive callback verification reproduced an IIS 404 at 2,100 query characters.
   * Reason: challenge-only checks did not exercise IIS request filtering on the authorization-code callback or browser fetch behavior for an anonymous legacy session.
+* Reopened implementation after real callbacks exposed classic ASP.NET rejection and an opaque modern remote failure.
+  * Reason: legacy has a second query-string limit below IIS, while modern's generic failure handler previously discarded the diagnostic category needed for an evidence-based correction.
 
 ## Release Summary
 

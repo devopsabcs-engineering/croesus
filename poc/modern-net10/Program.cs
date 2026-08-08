@@ -82,6 +82,11 @@ builder.Services
 
         options.Events.OnRemoteFailure = async context =>
         {
+            var logger = context.HttpContext.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("Croesus.ModernBff.Authentication");
+            OidcRemoteFailureDiagnostic.Log(logger, context.Failure);
+
             context.HandleResponse();
             context.Response.StatusCode = StatusCodes.Status500InternalServerError;
             context.Response.ContentType = "text/plain";
