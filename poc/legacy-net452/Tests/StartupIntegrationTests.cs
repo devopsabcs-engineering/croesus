@@ -1,8 +1,10 @@
 using System.Net;
+using System;
 using System.Threading.Tasks;
 using Croesus.LegacyNet452.Authentication;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.Owin.Testing;
+using Owin;
 using Xunit;
 
 namespace Croesus.LegacyNet452.Tests
@@ -43,6 +45,31 @@ namespace Croesus.LegacyNet452.Tests
                 Assert.Equal(HttpStatusCode.OK, response.StatusCode);
                 Assert.Contains("Sign in required", content);
                 Assert.DoesNotContain("Failed to fetch", content);
+            }
+        }
+
+        [Fact]
+        public async Task UnhandledDownstreamFailureReturnsGenericResponse()
+        {
+            using (var server = TestServer.Create(app =>
+            {
+                Startup.UseAuthenticationExceptionBoundary(app);
+                app.Run(context =>
+                {
+                    throw new InvalidOperationException(
+                        "code=authorization-code&state=state-value&client_secret=credential-value");
+                });
+            }))
+            using (var response = await server.CreateRequest("/signin-oidc").GetAsync())
+            {
+                var content = await response.Content.ReadAsStringAsync();
+
+                Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+                Assert.Equal("text/plain", response.Content.Headers.ContentType.MediaType);
+                Assert.Equal("Authentication could not be completed.", content);
+                Assert.DoesNotContain("authorization-code", content);
+                Assert.DoesNotContain("state-value", content);
+                Assert.DoesNotContain("credential-value", content);
             }
         }
 

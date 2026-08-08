@@ -57,6 +57,10 @@ Gaps and deviations identified during implementation.
   * Plan specifies: Both hosts enforce strict tenant-to-issuer binding and the configured tenant allowlist.
   * Implementation differs: Legacy accepts both `tid` and Katana's mapped Microsoft tenant-id claim URI; modern binds the tenant claim to `TokenValidatedContext.SecurityToken.Issuer` instead of a principal `iss` claim.
   * Rationale: Real callbacks reached token validation, where Katana can map the tenant claim and ASP.NET Core does not guarantee that the validated token issuer is copied into the principal.
+* DD-12: The latest interactive callback required host-specific completion boundaries.
+  * Plan specifies: Complete interactive authorization-code redemption after the bounded callback diagnostics identify the remaining failure.
+  * Implementation differs: Modern session projection now accepts the validated mapped tenant claim, and legacy wraps the full downstream OWIN pipeline before cookie and OIDC middleware.
+  * Rationale: Modern sign-in established a session but returned a null tenant ID, while the 2026-08-08 14:46:48 legacy callback bypassed the OIDC `AuthenticationFailed` notification and failed during `OwinHttpModule` `EndRequest`.
 
 ## Suggested Follow-On Work
 
@@ -71,7 +75,7 @@ Gaps and deviations identified during implementation.
   * Dependency: None
 * WI-04: Retry interactive sign-in to each corrected app and verify authorization-code redemption and session establishment. (medium)
   * Source: Successful deployment run 31225818740
-  * Dependency: Corrected deployment run 31233311155 and an authorized tenant user in an interactive browser session
+  * Dependency: A validated deployment containing the Phase 8 corrective slice and an authorized tenant user in an interactive browser session
 
 ## User Decisions
 

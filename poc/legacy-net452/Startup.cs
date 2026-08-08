@@ -1,3 +1,4 @@
+using System;
 using System.Net;
 using System.Security.Claims;
 using Croesus.LegacyNet452.Authentication;
@@ -33,6 +34,7 @@ namespace Croesus.LegacyNet452
             IAppBuilder app,
             OpenIdConnectAuthenticationOptions oidcOptions)
         {
+            UseAuthenticationExceptionBoundary(app);
             app.SetDefaultSignInAsAuthenticationType(
                 CookieOptionsFactory.AuthenticationType);
             app.UseCookieAuthentication(CookieOptionsFactory.Create());
@@ -87,6 +89,36 @@ namespace Croesus.LegacyNet452
                 }
 
                 await next();
+            });
+        }
+
+        internal static void UseAuthenticationExceptionBoundary(IAppBuilder app)
+        {
+            app.Use(async (context, next) =>
+            {
+                var responseStarted = false;
+                context.Response.OnSendingHeaders(
+                    _ => responseStarted = true,
+                    null);
+
+                try
+                {
+                    await next();
+                }
+                catch (Exception exception)
+                {
+                    AuthenticationEventLogger.AuthenticationFailed(exception);
+                    if (responseStarted)
+                    {
+                        throw;
+                    }
+
+                    context.Response.StatusCode = 500;
+                    context.Response.ContentType = "text/plain";
+                    context.Response.Headers.Set("Cache-Control", "no-store");
+                    await context.Response.WriteAsync(
+                        "Authentication could not be completed.");
+                }
             });
         }
     }

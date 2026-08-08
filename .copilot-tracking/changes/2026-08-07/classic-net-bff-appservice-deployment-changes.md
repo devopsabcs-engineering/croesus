@@ -24,6 +24,8 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
 * `poc/modern-net10/web.config` - Explicit ANCM V2 routing with a bounded OIDC callback query limit
 * `poc/modern-net10/Security/OidcRemoteFailureDiagnostic.cs` - Bounded remote-failure classification that emits only exception type and recognized protocol code
 * `poc/modern-net10/Tests/OidcRemoteFailureDiagnosticTests.cs` - Regression coverage for wrapped protocol codes and secret-bearing diagnostic input
+* `poc/legacy-net452/Tests/AuthenticationEventLoggerTests.cs` - Regression coverage for bounded wrapped protocol-code classification and secret-bearing exception text
+* `poc/modern-net10/Tests/SessionResponseTests.cs` - Regression coverage for normalized short tenant-claim precedence
 
 ### Modified
 
@@ -55,6 +57,11 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
 * `poc/modern-net10/Security/TenantPolicy.cs` - Binds the principal tenant claim to the authoritative validated security-token issuer instead of requiring an `iss` principal claim
 * `poc/modern-net10/Program.cs` - Passes the validated OIDC security token into tenant policy validation
 * `poc/modern-net10/Tests/TenantPolicyTests.cs` - Covers a principal without an `iss` claim and rejection of a token-issuer tenant mismatch
+* `poc/modern-net10/Models/SessionResponse.cs` - Falls back from `tid` to the mapped Microsoft tenant-id claim and normalizes the selected GUID
+* `poc/modern-net10/Tests/ModernBffFactory.cs` - Exercises mapped tenant projection and verifies that secret-bearing claims remain outside the session response
+* `poc/legacy-net452/Telemetry/AuthenticationEventLogger.cs` - Classifies only bounded exception type and exact recognized IDX or AADSTS protocol code
+* `poc/legacy-net452/Startup.cs` - Adds the outermost OWIN exception boundary before cookie and OIDC middleware with a generic unstarted-response failure
+* `poc/legacy-net452/Tests/StartupIntegrationTests.cs` - Verifies unhandled downstream failures return only the generic plain-text callback response
 
 ### Removed
 
@@ -86,6 +93,8 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
   * Reason: legacy has a second query-string limit below IIS, while modern's generic failure handler previously discarded the diagnostic category needed for an evidence-based correction.
 * Corrected tenant metadata handling after secret-safe callback diagnostics isolated token validation failures.
   * Reason: Katana can map `tid` to Microsoft's tenant-id claim URI, while ASP.NET Core's principal need not contain `iss`; the validated security token remains the authoritative issuer source.
+* Added an outer OWIN failure boundary after the latest legacy callback bypassed `AuthenticationFailed` and failed during `OwinHttpModule` `EndRequest`.
+  * Reason: exceptions raised outside OIDC notification handling still need a secret-safe classification and a generic response when headers have not started.
 
 ## Release Summary
 
@@ -116,6 +125,11 @@ Validation:
 * Phase 8 focused modern tenant policy tests passed: 4 tests
 * Phase 8 full legacy Release suite passed: 37 tests, 0 failed, 0 skipped
 * Phase 8 full modern Release suite passed: 18 tests, 0 failed, 0 skipped
+* Phase 8 corrective focused legacy tests passed: 7 tests, 0 failed, 0 skipped
+* Phase 8 corrective focused modern tests passed: 3 tests, 0 failed, 0 skipped
+* Phase 8 corrective full legacy Release suite passed: 41 tests, 0 failed, 0 skipped
+* Phase 8 corrective full modern Release suite passed: 19 tests, 0 failed, 0 skipped
+* Phase 8 corrective deployment static security checks passed
 * Both published IIS configurations contain a bounded `maxQueryString` of 8192 and retain their required OWIN or ANCM routing
 * Corrected deployment run `31233311155` completed both validation and protected deployment jobs successfully
 * Both deployed callback routes reached application-controlled handling with 2,100-character and 6,000-character query strings; IIS retained the intended rejection above the 8192-character bound

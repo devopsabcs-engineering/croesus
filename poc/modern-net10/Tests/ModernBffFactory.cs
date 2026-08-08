@@ -41,13 +41,16 @@ internal sealed class TestAuthenticationHandler(
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     public const string AuthenticationScheme = "Test";
+    private const string MappedTenantIdClaim =
+        "http://schemas.microsoft.com/identity/claims/tenantid";
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         var claims = new[]
         {
             new Claim("name", "Test User"),
-            new Claim("tid", TestConfiguration.TenantId)
+            new Claim(MappedTenantIdClaim, TestConfiguration.TenantId.ToUpperInvariant()),
+            new Claim("access_token", "must-not-be-projected")
         };
         var identity = new ClaimsIdentity(claims, AuthenticationScheme);
         var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), AuthenticationScheme);
