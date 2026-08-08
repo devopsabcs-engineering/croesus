@@ -144,6 +144,12 @@ if ($null -eq $legacyRequestLimits -or
     throw 'The legacy web.config must raise only maxQueryString to the bounded value 8192.'
 }
 
+$legacyOwinModule = $legacyWebConfig.SelectSingleNode(
+    '//modules/add[contains(@type, "Microsoft.Owin.Host.SystemWeb.OwinHttpModule")]')
+if ($null -ne $legacyOwinModule) {
+    throw 'The legacy web.config must rely on Katana pre-application startup instead of explicitly registering OwinHttpModule.'
+}
+
 $modernSystemWebServer = $modernWebConfig.SelectSingleNode(
     '/configuration/location[@path="." and @inheritInChildApplications="false"]/system.webServer')
 $modernRequestLimits = $modernSystemWebServer.SelectSingleNode(

@@ -26,6 +26,7 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
 * `poc/modern-net10/Tests/OidcRemoteFailureDiagnosticTests.cs` - Regression coverage for wrapped protocol codes and secret-bearing diagnostic input
 * `poc/legacy-net452/Tests/AuthenticationEventLoggerTests.cs` - Regression coverage for bounded wrapped protocol-code classification and secret-bearing exception text
 * `poc/modern-net10/Tests/SessionResponseTests.cs` - Regression coverage for normalized short tenant-claim precedence
+* `.copilot-tracking/research/subagents/2026-08-08/legacy-katana-oidc-callback-invalidoperation.md` - Focused analysis of the legacy SystemWeb callback failure and its bounded falsification path
 
 ### Modified
 
@@ -62,6 +63,8 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
 * `poc/legacy-net452/Telemetry/AuthenticationEventLogger.cs` - Classifies only bounded exception type and exact recognized IDX or AADSTS protocol code
 * `poc/legacy-net452/Startup.cs` - Adds the outermost OWIN exception boundary before cookie and OIDC middleware with a generic unstarted-response failure
 * `poc/legacy-net452/Tests/StartupIntegrationTests.cs` - Verifies unhandled downstream failures return only the generic plain-text callback response
+* `poc/legacy-net452/web.config` - Relies on Katana pre-application startup instead of explicitly registering `OwinHttpModule` a second time
+* `scripts/test-classic-net-bff-deployment-entra-static.ps1` - Rejects explicit legacy `OwinHttpModule` registration while preserving existing IIS and security checks
 
 ### Removed
 
@@ -95,6 +98,8 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
   * Reason: Katana can map `tid` to Microsoft's tenant-id claim URI, while ASP.NET Core's principal need not contain `iss`; the validated security token remains the authoritative issuer source.
 * Added an outer OWIN failure boundary after the latest legacy callback bypassed `AuthenticationFailed` and failed during `OwinHttpModule` `EndRequest`.
   * Reason: exceptions raised outside OIDC notification handling still need a secret-safe classification and a generic response when headers have not started.
+* Removed explicit legacy `OwinHttpModule` registration after the controlled boundary classified the callback failure as `InvalidOperationException` with no protocol code.
+  * Reason: Katana 4.2.3 already registers the module through pre-application startup; duplicate registration is the narrowest explanation for a SystemWeb finalization invariant failure during `EndRequest`.
 
 ## Release Summary
 
@@ -130,6 +135,9 @@ Validation:
 * Phase 8 corrective full legacy Release suite passed: 41 tests, 0 failed, 0 skipped
 * Phase 8 corrective full modern Release suite passed: 19 tests, 0 failed, 0 skipped
 * Phase 8 corrective deployment static security checks passed
+* Modern interactive authentication returned an authenticated session with display name and normalized tenant ID
+* Legacy controlled callback handling emitted only `AuthenticationFailed category=InvalidOperationException protocolCode=none`
+* Duplicate OWIN registration correction passed the deployment static suite and all 41 legacy Release tests
 * Both published IIS configurations contain a bounded `maxQueryString` of 8192 and retain their required OWIN or ANCM routing
 * Corrected deployment run `31233311155` completed both validation and protected deployment jobs successfully
 * Both deployed callback routes reached application-controlled handling with 2,100-character and 6,000-character query strings; IIS retained the intended rejection above the 8192-character bound

@@ -61,6 +61,10 @@ Gaps and deviations identified during implementation.
   * Plan specifies: Complete interactive authorization-code redemption after the bounded callback diagnostics identify the remaining failure.
   * Implementation differs: Modern session projection now accepts the validated mapped tenant claim, and legacy wraps the full downstream OWIN pipeline before cookie and OIDC middleware.
   * Rationale: Modern sign-in established a session but returned a null tenant ID, while the 2026-08-08 14:46:48 legacy callback bypassed the OIDC `AuthenticationFailed` notification and failed during `OwinHttpModule` `EndRequest`.
+* DD-13: Legacy SystemWeb hosting now relies only on Katana pre-application startup.
+  * Plan specifies: Complete the legacy authorization-code callback through the configured OWIN pipeline.
+  * Implementation differs: The explicit `web.config` registration of `OwinHttpModule` was removed and a static regression prevents its return.
+  * Rationale: The safe outer boundary classified the live failure as `InvalidOperationException` with no protocol code, and Katana 4.2.3 already registers the same module automatically before application startup.
 
 ## Suggested Follow-On Work
 
@@ -73,9 +77,9 @@ Gaps and deviations identified during implementation.
 * WI-03: Correct the validation workflow's false-green Azure prerequisite handling. (completed)
   * Source: Hosted run 31215402276
   * Dependency: None
-* WI-04: Retry interactive sign-in to each corrected app and verify authorization-code redemption and session establishment. (medium)
+* WI-04: Retry interactive sign-in to the corrected legacy app and verify authorization-code redemption and session establishment. (medium)
   * Source: Successful deployment run 31225818740
-  * Dependency: A validated deployment containing the Phase 8 corrective slice and an authorized tenant user in an interactive browser session
+  * Dependency: A validated deployment without duplicate OWIN module registration and an authorized tenant user in an interactive browser session
 
 ## User Decisions
 
