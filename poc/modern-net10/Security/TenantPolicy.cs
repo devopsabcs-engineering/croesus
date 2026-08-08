@@ -5,6 +5,9 @@ namespace Croesus.ModernBff.Security;
 
 internal sealed class TenantPolicy(BffAuthenticationSettings settings)
 {
+    private const string MappedTenantClaimType =
+        "http://schemas.microsoft.com/identity/claims/tenantid";
+
     public string ValidateIssuer(
         string issuer,
         SecurityToken securityToken,
@@ -18,16 +21,16 @@ internal sealed class TenantPolicy(BffAuthenticationSettings settings)
         return issuer;
     }
 
-    public void ValidatePrincipal(ClaimsPrincipal? principal)
+    public void ValidatePrincipal(ClaimsPrincipal? principal, SecurityToken? securityToken)
     {
-        var tenantClaim = principal?.FindFirstValue("tid");
+        var tenantClaim = principal?.FindFirstValue("tid")
+            ?? principal?.FindFirstValue(MappedTenantClaimType);
         if (!Guid.TryParse(tenantClaim, out var tenantId) || tenantId == Guid.Empty)
         {
             throw new SecurityTokenValidationException("The validated identity has no valid tenant claim.");
         }
 
-        var issuer = principal?.FindFirstValue("iss");
-        var issuerTenantId = ReadIssuerTenant(issuer);
+        var issuerTenantId = ReadIssuerTenant(securityToken?.Issuer);
         if (issuerTenantId != tenantId)
         {
             throw new SecurityTokenValidationException("The issuer tenant does not match the tenant claim.");

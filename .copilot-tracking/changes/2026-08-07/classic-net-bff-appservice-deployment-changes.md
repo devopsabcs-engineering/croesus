@@ -50,6 +50,11 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
 * `poc/legacy-net452/web.config` - Aligns classic ASP.NET's bounded query-string limit with IIS request filtering
 * `poc/modern-net10/Program.cs` - Records secret-safe OIDC remote-failure classifications while preserving the generic browser response
 * `scripts/test-classic-net-bff-deployment-entra-static.ps1` - Verifies the classic ASP.NET query limit remains bounded at 8192
+* `poc/legacy-net452/Authentication/TenantPolicy.cs` - Accepts the canonical `tid` claim and Katana's mapped Microsoft tenant-id claim while retaining GUID and allowlist validation
+* `poc/legacy-net452/Tests/TenantPolicyTests.cs` - Covers the mapped allowlisted tenant claim emitted by Katana claim mapping
+* `poc/modern-net10/Security/TenantPolicy.cs` - Binds the principal tenant claim to the authoritative validated security-token issuer instead of requiring an `iss` principal claim
+* `poc/modern-net10/Program.cs` - Passes the validated OIDC security token into tenant policy validation
+* `poc/modern-net10/Tests/TenantPolicyTests.cs` - Covers a principal without an `iss` claim and rejection of a token-issuer tenant mismatch
 
 ### Removed
 
@@ -79,10 +84,12 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
   * Reason: challenge-only checks did not exercise IIS request filtering on the authorization-code callback or browser fetch behavior for an anonymous legacy session.
 * Reopened implementation after real callbacks exposed classic ASP.NET rejection and an opaque modern remote failure.
   * Reason: legacy has a second query-string limit below IIS, while modern's generic failure handler previously discarded the diagnostic category needed for an evidence-based correction.
+* Corrected tenant metadata handling after secret-safe callback diagnostics isolated token validation failures.
+  * Reason: Katana can map `tid` to Microsoft's tenant-id claim URI, while ASP.NET Core's principal need not contain `iss`; the validated security token remains the authoritative issuer source.
 
 ## Release Summary
 
-All seven phases complete. The implementation adds the deployment automation, focused legacy OWIN integration coverage, and an explicit modern IIS configuration. It modifies the application, infrastructure, workflow, tests, and documentation surfaces and removes no files.
+Phases 1 through 7 are complete. Phase 8 remains in progress pending deployment and interactive browser verification in Step 8.3. The implementation adds the deployment automation, focused legacy OWIN integration coverage, and an explicit modern IIS configuration. It modifies the application, infrastructure, workflow, tests, and documentation surfaces and removes no files.
 
 The deployment uses one shared Windows B1 App Service plan with two HTTPS-only web apps. The legacy project remains compiled for .NET Framework 4.5.2 and runs on App Service's installed .NET Framework 4.8 runtime. The modern project publishes self-contained for `win-x64`. One confidential Entra `web` registration holds both callback URIs; a deterministic ownership tag enables guarded teardown without cross-run state artifacts.
 
@@ -105,6 +112,10 @@ Validation:
 * Modern `/api/session` and `/` returned `302` Entra challenges with the expected client ID and modern callback URI
 * Phase 7 legacy Release tests passed: 36 tests
 * Phase 7 modern Release tests passed: 14 tests
+* Phase 8 focused legacy tenant policy tests passed: 6 tests
+* Phase 8 focused modern tenant policy tests passed: 4 tests
+* Phase 8 full legacy Release suite passed: 37 tests, 0 failed, 0 skipped
+* Phase 8 full modern Release suite passed: 18 tests, 0 failed, 0 skipped
 * Both published IIS configurations contain a bounded `maxQueryString` of 8192 and retain their required OWIN or ANCM routing
 * Corrected deployment run `31233311155` completed both validation and protected deployment jobs successfully
 * Both deployed callback routes reached application-controlled handling with 2,100-character and 6,000-character query strings; IIS retained the intended rejection above the 8192-character bound

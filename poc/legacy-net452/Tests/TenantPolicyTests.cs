@@ -21,6 +21,21 @@ namespace Croesus.LegacyNet452.Tests
         }
 
         [Fact]
+        public void EnsureAllowedIdentityAcceptsMappedAllowlistedTenant()
+        {
+            var identity = new ClaimsIdentity(
+                new[]
+                {
+                    new Claim(
+                        "http://schemas.microsoft.com/identity/claims/tenantid",
+                        TestSettings.AllowedTenantId)
+                },
+                "validated");
+
+            TenantPolicy.EnsureAllowedIdentity(identity, TestSettings.Organizations());
+        }
+
+        [Fact]
         public void EnsureAllowedIdentityRejectsTenantOutsideAllowlist()
         {
             var identity = new ClaimsIdentity(

@@ -10,6 +10,8 @@ namespace Croesus.LegacyNet452.Authentication
     public static class TenantPolicy
     {
         private const string IssuerHost = "login.microsoftonline.com";
+        private const string MappedTenantClaimType =
+            "http://schemas.microsoft.com/identity/claims/tenantid";
 
         public static void EnsureAllowedIdentity(
             ClaimsIdentity identity,
@@ -20,7 +22,8 @@ namespace Croesus.LegacyNet452.Authentication
                 throw new SecurityTokenValidationException("The validated identity is missing.");
             }
 
-            var tenantClaim = identity.FindFirst("tid");
+            var tenantClaim = identity.FindFirst("tid") ??
+                identity.FindFirst(MappedTenantClaimType);
             Guid tenantId;
             if (tenantClaim == null || !Guid.TryParse(tenantClaim.Value, out tenantId))
             {

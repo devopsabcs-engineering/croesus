@@ -53,6 +53,10 @@ Gaps and deviations identified during implementation.
   * Plan specifies: An 8192-character IIS request-filtering limit admits code-flow callbacks.
   * Implementation differs: Phase 8 also aligns classic ASP.NET `httpRuntime` and adds bounded modern failure classification.
   * Rationale: The legacy event log showed `maxQueryStringLength` rejection before OWIN, while modern deliberately hid its remote-failure category.
+* DD-11: Token-handler claim projection required host-specific tenant metadata handling.
+  * Plan specifies: Both hosts enforce strict tenant-to-issuer binding and the configured tenant allowlist.
+  * Implementation differs: Legacy accepts both `tid` and Katana's mapped Microsoft tenant-id claim URI; modern binds the tenant claim to `TokenValidatedContext.SecurityToken.Issuer` instead of a principal `iss` claim.
+  * Rationale: Real callbacks reached token validation, where Katana can map the tenant claim and ASP.NET Core does not guarantee that the validated token issuer is copied into the principal.
 
 ## Suggested Follow-On Work
 

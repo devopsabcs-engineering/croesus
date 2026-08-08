@@ -68,7 +68,7 @@ builder.Services
 
             try
             {
-                tenantPolicy.ValidatePrincipal(context.Principal);
+                tenantPolicy.ValidatePrincipal(context.Principal, context.SecurityToken);
                 context.HttpContext.RequestServices
                     .GetRequiredService<ILoggerFactory>()
                     .CreateLogger("Croesus.ModernBff.Authentication")

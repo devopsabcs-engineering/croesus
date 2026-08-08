@@ -1,3 +1,4 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Croesus.ModernBff.Security;
 using Microsoft.Extensions.Hosting;
@@ -36,20 +37,30 @@ public sealed class TenantPolicyTests
     }
 
     [Fact]
-    public void PrincipalValidationBindsIssuerToTenantClaim()
+    public void PrincipalValidationAcceptsTokenIssuerWhenPrincipalHasNoIssuerClaim()
     {
         var policy = CreateOrganizationsPolicy();
-        var claims = new[]
-        {
-            new Claim("tid", TestConfiguration.TenantId),
-            new Claim(
-                "iss",
-                $"https://login.microsoftonline.com/{TestConfiguration.OtherTenantId}/v2.0")
-        };
+        var claims = new[] { new Claim("tid", TestConfiguration.TenantId) };
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "Test"));
+        var token = CreateToken(TestConfiguration.TenantId);
 
-        Assert.Throws<SecurityTokenValidationException>(() => policy.ValidatePrincipal(principal));
+        policy.ValidatePrincipal(principal, token);
     }
+
+    [Fact]
+    public void PrincipalValidationRejectsTokenIssuerTenantMismatch()
+    {
+        var policy = CreateOrganizationsPolicy();
+        var claims = new[] { new Claim("tid", TestConfiguration.TenantId) };
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "Test"));
+        var token = CreateToken(TestConfiguration.OtherTenantId);
+
+        Assert.Throws<SecurityTokenValidationException>(
+            () => policy.ValidatePrincipal(principal, token));
+    }
+
+    private static JwtSecurityToken CreateToken(string tenantId) =>
+        new(issuer: $"https://login.microsoftonline.com/{tenantId}/v2.0");
 
     private static TenantPolicy CreateOrganizationsPolicy()
     {
