@@ -41,6 +41,10 @@ Gaps and deviations identified during implementation.
   * Plan specifies: Verify both deployed applications are testable.
   * Implementation differs: Readiness checks assert protected endpoint behavior and exact login host, client ID, and callback URI with bounded startup retries.
   * Rationale: The legacy root is intentionally anonymous and returned 200 even while its authentication challenge was failing.
+* DD-08: Interactive sign-in reopened deployment implementation after challenge checks passed.
+  * Plan specifies: Verify both applications through protected-route Entra redirects.
+  * Implementation differs: Phase 7 now covers IIS callback query capacity and legacy anonymous API response semantics.
+  * Rationale: A 2,100-character callback probe reproduced the browser's generic IIS 404, and legacy Katana rewrote the session API's explicit 401 into a cross-origin OIDC redirect.
 
 ## Suggested Follow-On Work
 
@@ -53,7 +57,7 @@ Gaps and deviations identified during implementation.
 * WI-03: Correct the validation workflow's false-green Azure prerequisite handling. (completed)
   * Source: Hosted run 31215402276
   * Dependency: None
-* WI-04: Complete an interactive sign-in to each app and verify authorization-code redemption and session establishment. (medium)
+* WI-04: Complete an interactive sign-in to each app and verify authorization-code redemption and session establishment. (in progress)
   * Source: Successful deployment run 31225818740
   * Dependency: An authorized tenant user and interactive browser session
 

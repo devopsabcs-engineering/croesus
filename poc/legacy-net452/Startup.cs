@@ -19,11 +19,24 @@ namespace Croesus.LegacyNet452
         {
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             var settings = LegacyAuthenticationSettings.LoadAndValidate();
+            ConfigureApplication(app, settings);
+        }
 
+        internal static void ConfigureApplication(
+            IAppBuilder app,
+            LegacyAuthenticationSettings settings)
+        {
+            ConfigureApplication(app, OidcOptionsFactory.Create(settings));
+        }
+
+        internal static void ConfigureApplication(
+            IAppBuilder app,
+            OpenIdConnectAuthenticationOptions oidcOptions)
+        {
             app.SetDefaultSignInAsAuthenticationType(
                 CookieOptionsFactory.AuthenticationType);
             app.UseCookieAuthentication(CookieOptionsFactory.Create());
-            app.UseOpenIdConnectAuthentication(OidcOptionsFactory.Create(settings));
+            app.UseOpenIdConnectAuthentication(oidcOptions);
 
             app.Use(async (context, next) =>
             {

@@ -23,6 +23,7 @@ namespace Croesus.LegacyNet452.Authentication
                 UsePkce = true,
                 RedeemCode = true,
                 SaveTokens = false,
+                AuthenticationMode = AuthenticationMode.Passive,
                 Scope = "openid profile",
                 Notifications = new OpenIdConnectAuthenticationNotifications
                 {

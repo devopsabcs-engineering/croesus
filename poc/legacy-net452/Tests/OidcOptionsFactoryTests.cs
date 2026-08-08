@@ -1,5 +1,6 @@
 using Croesus.LegacyNet452.Authentication;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using Microsoft.Owin.Security;
 using Xunit;
 
 namespace Croesus.LegacyNet452.Tests
@@ -16,6 +17,7 @@ namespace Croesus.LegacyNet452.Tests
             Assert.True(options.UsePkce);
             Assert.True(options.RedeemCode);
             Assert.False(options.SaveTokens);
+            Assert.Equal(AuthenticationMode.Passive, options.AuthenticationMode);
             Assert.Equal("openid profile", options.Scope);
             Assert.Equal(CookieOptionsFactory.AuthenticationType, options.SignInAsAuthenticationType);
         }

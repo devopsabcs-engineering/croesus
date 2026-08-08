@@ -103,3 +103,13 @@ The first hosted validation run completed successfully but exposed a false-green
 Capture the raw Azure CLI result, check `$LASTEXITCODE` immediately, and fail with a concise permission-oriented message before calling `ConvertFrom-Json`. Only a successful literal boolean response may control the resource-group-exists branch.
 
 Add a static workflow regression check that verifies exit-code handling occurs between `az group exists` and JSON parsing. Revalidate YAML and embedded PowerShell, commit and push the focused fix, then dispatch the workflow again with the same validation inputs. A missing Azure permission must produce a visible failure rather than a successful skipped what-if.
+
+## Implementation Phase 7: Complete Interactive Authentication
+
+Interactive browser verification exposed two behaviors that challenge-only smoke tests could not detect. A modern `/signin-oidc` request with a short query reaches ASP.NET Core, while a query of 2,100 characters returns the generic IIS 404 response before application middleware. The legacy page also fetches `/api/session`, but Katana converts its anonymous 401 into an OIDC redirect that the browser cannot follow as a cross-origin fetch.
+
+Add IIS request filtering configuration to both published applications with a bounded `maxQueryString` of 8192. For the modern self-contained publish, include a source `web.config` that preserves the ASP.NET Core Module V2 handler and process settings. For legacy, extend the existing `web.config` without weakening other request limits.
+
+Prevent Katana authentication middleware from rewriting the legacy session endpoint's explicit 401 into a challenge. Keep `/signin` as the intentional interactive challenge route. The anonymous root page must render a clear signed-out message instead of `Failed to fetch`.
+
+Add focused regression coverage for both IIS configurations and legacy anonymous response behavior. Publish both applications and inspect the generated artifacts. Redeploy through the existing workflow, then verify that long synthetic callback queries reach application-controlled handling and that anonymous `/api/session` returns a direct 401 with no Entra `Location` header. Interactive authorization-code redemption remains the final browser verification.

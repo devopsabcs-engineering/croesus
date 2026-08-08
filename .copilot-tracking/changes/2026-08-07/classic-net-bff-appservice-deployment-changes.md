@@ -20,6 +20,8 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
 * `.github/workflows/classic-net-bff-poc.yml` - Manual validation/deployment pipeline using Windows builds, GitHub OIDC, Bicep what-if, same-step secret handling, package deployment, and redirect smoke checks
 * `.github/workflows/teardown-classic-net-bff-poc.yml` - Typed-confirmation teardown for the deterministic resource group and ownership-tagged Entra objects
 * `.copilot-tracking/research/subagents/2026-08-07/github-actions-run-31219189056.md` - Read-only evidence for the Graph permission failure that informed the least-privilege bootstrap correction
+* `poc/legacy-net452/Tests/StartupIntegrationTests.cs` - In-memory OWIN coverage for anonymous session responses and explicit sign-in challenges
+* `poc/modern-net10/web.config` - Explicit ANCM V2 routing with a bounded OIDC callback query limit
 
 ### Modified
 
@@ -36,6 +38,13 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
 * `poc/legacy-net452/web.config` - Redirects Newtonsoft.Json references through the deployed 13.0.0.0 assembly
 * `scripts/provision-classic-net-bff-deployment.ps1` - Sends Graph JSON through temporary files and retries bounded replication and credential-concurrency failures
 * `scripts/test-classic-net-bff-deployment-entra-static.ps1` - Covers Azure CLI error ordering, Graph request transport and retries, runtime configuration, and authentication readiness checks
+* `poc/legacy-net452/Authentication/OidcOptionsFactory.cs` - Uses passive OIDC middleware so only explicit sign-in routes initiate an Entra challenge
+* `poc/legacy-net452/Startup.cs` - Exposes deterministic pipeline configuration for integration coverage while preserving runtime settings validation
+* `poc/legacy-net452/web.config` - Allows callback query strings up to 8192 characters through IIS request filtering
+* `poc/legacy-net452/LegacyNet452.csproj` - Grants integration tests access to internal pipeline configuration
+* `poc/legacy-net452/Tests/LegacyNet452.Tests.csproj` - Adds the OWIN test-server dependency for endpoint behavior coverage
+* `poc/legacy-net452/Tests/OidcOptionsFactoryTests.cs` - Verifies passive middleware with retained code redemption and PKCE settings
+* `scripts/test-classic-net-bff-deployment-entra-static.ps1` - Verifies both bounded IIS limits and modern ANCM process routing
 
 ### Removed
 
@@ -61,6 +70,8 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
   * Reason: inline JSON was corrupted by native argument handling; immediate post-create and credential-rotation operations also returned transient Graph replication and concurrency errors.
 * Corrected App Service runtime assumptions found after the first successful package deployment.
   * Reason: the modern `win-x64` executable required a 64-bit worker, and the legacy challenge path required a Newtonsoft.Json binding redirect.
+* Reopened implementation after interactive callback verification reproduced an IIS 404 at 2,100 query characters.
+  * Reason: challenge-only checks did not exercise IIS request filtering on the authorization-code callback or browser fetch behavior for an anonymous legacy session.
 
 ## Release Summary
 

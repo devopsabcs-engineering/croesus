@@ -22,11 +22,13 @@ $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $workflowPath = Join-Path $repositoryRoot '.github\workflows\classic-net-bff-poc.yml'
 $bicepPath = Join-Path $repositoryRoot 'infra\poc\main.bicep'
 $legacyWebConfigPath = Join-Path $repositoryRoot 'poc\legacy-net452\web.config'
+$modernWebConfigPath = Join-Path $repositoryRoot 'poc\modern-net10\web.config'
 $provisionSource = Get-Content -LiteralPath $provisionPath -Raw
 $cleanupSource = Get-Content -LiteralPath $cleanupPath -Raw
 $workflowSource = Get-Content -LiteralPath $workflowPath -Raw
 $bicepSource = Get-Content -LiteralPath $bicepPath -Raw
 [xml]$legacyWebConfig = Get-Content -LiteralPath $legacyWebConfigPath -Raw
+[xml]$modernWebConfig = Get-Content -LiteralPath $modernWebConfigPath -Raw
 
 function Get-ScriptAst {
     param([Parameter(Mandatory)][string]$Path)
@@ -125,6 +127,34 @@ if ($null -eq $bindingRedirect) {
 if ($legacyWebConfig.configuration.'system.web'.compilation.targetFramework -cne '4.5.2' -or
     $legacyWebConfig.configuration.'system.web'.customErrors.mode -cne 'On') {
     throw 'The legacy binding redirect must preserve net452 and customErrors mode On.'
+}
+
+$legacyRequestLimits = $legacyWebConfig.SelectSingleNode(
+    '/configuration/system.webServer/security/requestFiltering/requestLimits')
+if ($null -eq $legacyRequestLimits -or
+    $legacyRequestLimits.maxQueryString -cne '8192' -or
+    $legacyRequestLimits.Attributes.Count -ne 1) {
+    throw 'The legacy web.config must raise only maxQueryString to the bounded value 8192.'
+}
+
+$modernSystemWebServer = $modernWebConfig.SelectSingleNode(
+    '/configuration/location[@path="." and @inheritInChildApplications="false"]/system.webServer')
+$modernRequestLimits = $modernSystemWebServer.SelectSingleNode(
+    'security/requestFiltering/requestLimits')
+$modernHandler = $modernSystemWebServer.SelectSingleNode(
+    'handlers/add[@name="aspNetCore" and @path="*" and @verb="*" and ' +
+    '@modules="AspNetCoreModuleV2" and @resourceType="Unspecified"]')
+$modernAspNetCore = $modernSystemWebServer.SelectSingleNode(
+    'aspNetCore[@processPath=".\Croesus.ModernBff.exe" and ' +
+    '@stdoutLogEnabled="false" and @stdoutLogFile=".\logs\stdout" and ' +
+    '@hostingModel="inprocess"]')
+if ($null -eq $modernRequestLimits -or
+    $modernRequestLimits.maxQueryString -cne '8192' -or
+    $modernRequestLimits.Attributes.Count -ne 1) {
+    throw 'The modern web.config must raise only maxQueryString to the bounded value 8192.'
+}
+if ($null -eq $modernHandler -or $null -eq $modernAspNetCore) {
+    throw 'The modern web.config must preserve ANCM V2 in-process routing to Croesus.ModernBff.exe.'
 }
 
 $invokeGraphSource = Get-FunctionSource -Ast $provisionAst -Name 'Invoke-Graph'

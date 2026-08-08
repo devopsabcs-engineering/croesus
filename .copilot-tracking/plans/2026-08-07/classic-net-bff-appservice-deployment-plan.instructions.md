@@ -87,6 +87,14 @@ Add a repeatable, low-cost Azure demonstration deployment for the .NET Framework
 * [x] Step 6.2: Add a static regression check that prevents the false-green ordering from returning
 * [x] Step 6.3: Validate, commit, push, and rerun the validation workflow
 
+### [ ] Implementation Phase 7: Complete Interactive Authentication
+
+<!-- depends-on: phase 6 -->
+
+* [x] Step 7.1: Allow bounded OIDC callback query strings through IIS for both applications
+* [x] Step 7.2: Preserve a direct 401 response for the anonymous legacy session API
+* [ ] Step 7.3: Add focused regressions, deploy both packages, and verify callback routing and signed-out behavior
+
 ## Success Criteria
 
 * The Bicep deployment contains exactly one Windows B1 App Service plan and two web apps
@@ -98,3 +106,5 @@ Add a repeatable, low-cost Azure demonstration deployment for the .NET Framework
 * The demo credential is short-lived, masked, replaced deterministically, and never committed or persisted as an artifact
 * Multi-tenant mode remains explicit and requires an allowed-tenant list
 * Validation can run without changing Azure or Entra resources
+* OIDC code-flow callbacks longer than the IIS default query-string limit reach application middleware
+* The anonymous legacy session API returns 401 without redirecting fetch requests to Microsoft Entra
