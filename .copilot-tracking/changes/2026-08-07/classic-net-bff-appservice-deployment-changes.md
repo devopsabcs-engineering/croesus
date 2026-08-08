@@ -65,6 +65,10 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
 * `poc/legacy-net452/Tests/StartupIntegrationTests.cs` - Verifies unhandled downstream failures return only the generic plain-text callback response
 * `poc/legacy-net452/web.config` - Relies on Katana pre-application startup instead of explicitly registering `OwinHttpModule` a second time
 * `scripts/test-classic-net-bff-deployment-entra-static.ps1` - Rejects explicit legacy `OwinHttpModule` registration while preserving existing IIS and security checks
+* `poc/legacy-net452/Authentication/CookieOptionsFactory.cs` - Records a secret-safe cookie exception phase while preserving Katana rethrow behavior
+* `poc/legacy-net452/Telemetry/AuthenticationEventLogger.cs` - Adds bounded component, phase, exception type, HRESULT, and protocol-code classification
+* `poc/legacy-net452/Tests/CookieOptionsFactoryTests.cs` - Verifies the cookie diagnostic callback preserves both rethrow states
+* `poc/legacy-net452/Tests/AuthenticationEventLoggerTests.cs` - Verifies phase diagnostics exclude secret-bearing exception text
 
 ### Removed
 
@@ -100,6 +104,8 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
   * Reason: exceptions raised outside OIDC notification handling still need a secret-safe classification and a generic response when headers have not started.
 * Removed explicit legacy `OwinHttpModule` registration after the controlled boundary classified the callback failure as `InvalidOperationException` with no protocol code.
   * Reason: Katana 4.2.3 already registers the module through pre-application startup; duplicate registration is the narrowest explanation for a SystemWeb finalization invariant failure during `EndRequest`.
+* Added a cookie-phase diagnostic after the corrected host changed the callback failure to `HttpException` with no protocol code and IIS `404.0`.
+  * Reason: the cookie provider's fixed `ApplyResponseGrant` phase marker separates session-cookie issuance failures from later SystemWeb host finalization without logging request or identity material.
 
 ## Release Summary
 
@@ -138,6 +144,7 @@ Validation:
 * Modern interactive authentication returned an authenticated session with display name and normalized tenant ID
 * Legacy controlled callback handling emitted only `AuthenticationFailed category=InvalidOperationException protocolCode=none`
 * Duplicate OWIN registration correction passed the deployment static suite and all 41 legacy Release tests
+* Cookie-phase diagnostics passed 7 focused tests and all 44 legacy Release tests
 * Both published IIS configurations contain a bounded `maxQueryString` of 8192 and retain their required OWIN or ANCM routing
 * Corrected deployment run `31233311155` completed both validation and protected deployment jobs successfully
 * Both deployed callback routes reached application-controlled handling with 2,100-character and 6,000-character query strings; IIS retained the intended rejection above the 8192-character bound

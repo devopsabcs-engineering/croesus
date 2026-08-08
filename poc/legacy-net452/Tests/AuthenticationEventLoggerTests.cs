@@ -49,5 +49,33 @@ namespace Croesus.LegacyNet452.Tests
             Assert.DoesNotContain("email@example.com", logEntry);
             Assert.DoesNotContain("password-value", logEntry);
         }
+
+        [Fact]
+        public void FormatSafePhaseFailureIncludesOnlyBoundedClassificationFields()
+        {
+            const string secretText =
+                "query=?code=authorization-code&state=state-value&nonce=nonce-value " +
+                "access_token=token-value client_secret=credential-value claim=email@example.com";
+            var failure = new System.Web.HttpException(
+                secretText,
+                new OpenIdConnectProtocolException("Nested secret: password-value"));
+
+            var logEntry = AuthenticationEventLogger.FormatSafePhaseFailure(
+                "Cookie",
+                "ApplyResponseGrant",
+                failure);
+
+            Assert.Equal(
+                "AuthenticationPhaseFailed component=Cookie phase=ApplyResponseGrant " +
+                "category=HttpException hresult=0x80004005 protocolCode=none",
+                logEntry);
+            Assert.DoesNotContain("authorization-code", logEntry);
+            Assert.DoesNotContain("state-value", logEntry);
+            Assert.DoesNotContain("nonce-value", logEntry);
+            Assert.DoesNotContain("token-value", logEntry);
+            Assert.DoesNotContain("credential-value", logEntry);
+            Assert.DoesNotContain("email@example.com", logEntry);
+            Assert.DoesNotContain("password-value", logEntry);
+        }
     }
 }

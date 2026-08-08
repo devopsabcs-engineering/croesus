@@ -21,7 +21,17 @@ namespace Croesus.LegacyNet452.Authentication
                 CookieSameSite = SameSiteMode.Lax,
                 CookieManager = new SystemWebCookieManager(),
                 ExpireTimeSpan = TimeSpan.FromMinutes(30),
-                SlidingExpiration = false
+                SlidingExpiration = false,
+                Provider = new CookieAuthenticationProvider
+                {
+                    OnException = context =>
+                    {
+                        AuthenticationEventLogger.AuthenticationPhaseFailed(
+                            "Cookie",
+                            context.Location.ToString(),
+                            context.Exception);
+                    }
+                }
             };
         }
     }

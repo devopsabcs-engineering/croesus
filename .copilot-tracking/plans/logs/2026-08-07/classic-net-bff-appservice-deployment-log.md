@@ -65,6 +65,10 @@ Gaps and deviations identified during implementation.
   * Plan specifies: Complete the legacy authorization-code callback through the configured OWIN pipeline.
   * Implementation differs: The explicit `web.config` registration of `OwinHttpModule` was removed and a static regression prevents its return.
   * Rationale: The safe outer boundary classified the live failure as `InvalidOperationException` with no protocol code, and Katana 4.2.3 already registers the same module automatically before application startup.
+* DD-14: Legacy cookie teardown now emits a bounded phase diagnostic.
+  * Plan specifies: Complete the legacy authorization-code callback after host registration is corrected.
+  * Implementation differs: The Katana cookie provider records only component, enum phase, exception type, HRESULT, and recognized protocol code while preserving rethrow behavior.
+  * Rationale: The post-correction callback changed to `HttpException` with no protocol code and IIS `404.0`; the phase marker distinguishes cookie issuance from later host finalization without exposing authentication material.
 
 ## Suggested Follow-On Work
 
