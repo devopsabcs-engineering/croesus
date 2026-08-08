@@ -75,7 +75,7 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
 
 ## Release Summary
 
-All six phases complete. The implementation adds seven deployment files, modifies the application, infrastructure, workflow, tests, and documentation surfaces, creates four tracking artifacts, and removes no files.
+All seven phases complete. The implementation adds the deployment automation, focused legacy OWIN integration coverage, and an explicit modern IIS configuration. It modifies the application, infrastructure, workflow, tests, and documentation surfaces and removes no files.
 
 The deployment uses one shared Windows B1 App Service plan with two HTTPS-only web apps. The legacy project remains compiled for .NET Framework 4.5.2 and runs on App Service's installed .NET Framework 4.8 runtime. The modern project publishes self-contained for `win-x64`. One confidential Entra `web` registration holds both callback URIs; a deterministic ownership tag enables guarded teardown without cross-run state artifacts.
 
@@ -96,5 +96,11 @@ Validation:
 * Resource group `croesus-bff-poc-rg` contains one B1 plan, `croesus-bff-a3v24wppuvd34-plan`, and two deployed web apps
 * Legacy `/api/session` and `/signin` returned `302` Entra challenges with the expected client ID and legacy callback URI
 * Modern `/api/session` and `/` returned `302` Entra challenges with the expected client ID and modern callback URI
+* Phase 7 legacy Release tests passed: 36 tests
+* Phase 7 modern Release tests passed: 14 tests
+* Both published IIS configurations contain a bounded `maxQueryString` of 8192 and retain their required OWIN or ANCM routing
+* Corrected deployment run `31233311155` completed both validation and protected deployment jobs successfully
+* Both deployed callback routes reached application-controlled handling with 2,100-character and 6,000-character query strings; IIS retained the intended rejection above the 8192-character bound
+* Deployed legacy `/api/session` returned `401` with no `Location` header; deployed modern `/api/session` retained its intended `302` Entra challenge
 
-The deployed applications are available at `https://croesus-bff-a3v24wppuvd34-legacy.azurewebsites.net` and `https://croesus-bff-a3v24wppuvd34-modern.azurewebsites.net`. The shared Entra registration client ID is `3ee7b866-1d40-4746-a880-f7fda6d2d53e`. Redirect validation did not follow the Microsoft Entra login flow, so interactive sign-in and authorization-code redemption remain a user-interactive verification step. The demo credential expires one day after the successful deployment and should be rotated by redeploying or removed with the guarded teardown workflow.
+The deployed applications are available at `https://croesus-bff-a3v24wppuvd34-legacy.azurewebsites.net` and `https://croesus-bff-a3v24wppuvd34-modern.azurewebsites.net`. The shared Entra registration client ID is `3ee7b866-1d40-4746-a880-f7fda6d2d53e`. IIS callback routing and signed-out behavior now pass hosted verification. Authorization-code redemption remains a user-interactive browser check because credentials and session state cannot be supplied through deployment automation. The demo credential expires one day after the successful deployment and should be rotated by redeploying or removed with the guarded teardown workflow.

@@ -45,6 +45,10 @@ Gaps and deviations identified during implementation.
   * Plan specifies: Verify both applications through protected-route Entra redirects.
   * Implementation differs: Phase 7 now covers IIS callback query capacity and legacy anonymous API response semantics.
   * Rationale: A 2,100-character callback probe reproduced the browser's generic IIS 404, and legacy Katana rewrote the session API's explicit 401 into a cross-origin OIDC redirect.
+* DD-09: Callback verification uses bounded synthetic queries before a user-driven authorization-code retry.
+  * Plan specifies: Complete interactive sign-in verification after deployment.
+  * Implementation differs: Hosted probes verify IIS-to-application routing at 2,100 and 6,000 characters; credential entry remains in the user's browser.
+  * Rationale: Authentication credentials and browser session material must not pass through automation or chat tools.
 
 ## Suggested Follow-On Work
 
@@ -57,9 +61,9 @@ Gaps and deviations identified during implementation.
 * WI-03: Correct the validation workflow's false-green Azure prerequisite handling. (completed)
   * Source: Hosted run 31215402276
   * Dependency: None
-* WI-04: Complete an interactive sign-in to each app and verify authorization-code redemption and session establishment. (in progress)
+* WI-04: Retry interactive sign-in to each corrected app and verify authorization-code redemption and session establishment. (medium)
   * Source: Successful deployment run 31225818740
-  * Dependency: An authorized tenant user and interactive browser session
+  * Dependency: Corrected deployment run 31233311155 and an authorized tenant user in an interactive browser session
 
 ## User Decisions
 
