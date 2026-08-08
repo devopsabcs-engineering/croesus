@@ -19,6 +19,7 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
 * `scripts/test-classic-net-bff-deployment-entra-static.ps1` - Static regression checks for callback platform, rotation ordering, masking, secret sinks, RBAC absence, and teardown ownership
 * `.github/workflows/classic-net-bff-poc.yml` - Manual validation/deployment pipeline using Windows builds, GitHub OIDC, Bicep what-if, same-step secret handling, package deployment, and redirect smoke checks
 * `.github/workflows/teardown-classic-net-bff-poc.yml` - Typed-confirmation teardown for the deterministic resource group and ownership-tagged Entra objects
+* `.copilot-tracking/research/subagents/2026-08-07/github-actions-run-31219189056.md` - Read-only evidence for the Graph permission failure that informed the least-privilege bootstrap correction
 
 ### Modified
 
@@ -30,7 +31,11 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
 * `poc/modern-net10/Tests/StartupConfigurationTests.cs` - Adds regression coverage for the explicit `Poc` client-secret boundary
 * `docs/classic-net-bff-poc.md` - Documents bootstrap permissions, configuration, deployment modes, credential rotation, demo flow, multitenancy, caveats, and teardown
 * `.github/workflows/classic-net-bff-poc.yml` - Fails validation when Azure CLI cannot inspect the deterministic resource group and rejects malformed existence responses
-* `scripts/test-classic-net-bff-deployment-entra-static.ps1` - Prevents Azure CLI failures from being parsed as an absent resource group
+* `.github/workflows/classic-net-bff-poc.yml` - Uses bounded readiness checks for protected endpoints and validates each Entra challenge host, client ID, and callback URI
+* `infra/poc/main.bicep` - Runs the self-contained modern `win-x64` application in a 64-bit App Service worker
+* `poc/legacy-net452/web.config` - Redirects Newtonsoft.Json references through the deployed 13.0.0.0 assembly
+* `scripts/provision-classic-net-bff-deployment.ps1` - Sends Graph JSON through temporary files and retries bounded replication and credential-concurrency failures
+* `scripts/test-classic-net-bff-deployment-entra-static.ps1` - Covers Azure CLI error ordering, Graph request transport and retries, runtime configuration, and authentication readiness checks
 
 ### Removed
 
@@ -48,10 +53,18 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
   * Reason: teardown must rediscover its target safely without treating a mutable or public artifact as authorization to delete directory objects.
 * Hosted validation run `31215402276` passed builds and tests but exposed a false-green optional what-if.
   * Reason: `az group exists` returned `Forbidden`; the workflow parsed its empty output before checking `$LASTEXITCODE` and incorrectly reported a successful skip.
+* Bootstrapped the GitHub OIDC deployment identity with Microsoft Graph `Application.ReadWrite.All` application permission and tenant-admin consent.
+  * Reason: Azure resource-group Contributor does not grant Microsoft Graph directory access required to converge the demonstration registration.
+* Added the protected-environment federated credential and kept Azure Contributor scoped to `croesus-bff-poc-rg`.
+  * Reason: the `poc-demo` job uses an environment OIDC subject, while resource-group scope is sufficient for this deployment.
+* Repaired Windows Azure CLI JSON transport and bounded Graph eventual-consistency handling during live deployment.
+  * Reason: inline JSON was corrupted by native argument handling; immediate post-create and credential-rotation operations also returned transient Graph replication and concurrency errors.
+* Corrected App Service runtime assumptions found after the first successful package deployment.
+  * Reason: the modern `win-x64` executable required a 64-bit worker, and the legacy challenge path required a Newtonsoft.Json binding redirect.
 
 ## Release Summary
 
-All five phases complete. The implementation adds seven deployment files, modifies seven application and documentation files, creates four tracking artifacts, and removes no files.
+All six phases complete. The implementation adds seven deployment files, modifies the application, infrastructure, workflow, tests, and documentation surfaces, creates four tracking artifacts, and removes no files.
 
 The deployment uses one shared Windows B1 App Service plan with two HTTPS-only web apps. The legacy project remains compiled for .NET Framework 4.5.2 and runs on App Service's installed .NET Framework 4.8 runtime. The modern project publishes self-contained for `win-x64`. One confidential Entra `web` registration holds both callback URIs; a deterministic ownership tag enables guarded teardown without cross-run state artifacts.
 
@@ -66,7 +79,11 @@ Validation:
 * Both credential-safety static suites passed
 * Bicep and Bicep parameters compiled without diagnostics
 * Compiled infrastructure contains one Windows B1 plan, two sites, no forbidden resources, a secure secret parameter, and no secret output
-* Both workflow files and all 17 embedded PowerShell blocks parsed successfully
+* Both workflow files and their embedded PowerShell blocks parsed successfully
 * Credential, RBAC, workflow-permission, tier, whitespace, and editor diagnostics checks passed for the changed deployment surface
+* Live deployment run `31225818740` completed successfully
+* Resource group `croesus-bff-poc-rg` contains one B1 plan, `croesus-bff-a3v24wppuvd34-plan`, and two deployed web apps
+* Legacy `/api/session` and `/signin` returned `302` Entra challenges with the expected client ID and legacy callback URI
+* Modern `/api/session` and `/` returned `302` Entra challenges with the expected client ID and modern callback URI
 
-No live Azure what-if, resource deployment, Microsoft Graph mutation, browser sign-in, or teardown was performed. Repository administrators must configure the `poc-demo` environment, its reviewers, and the documented public OIDC variables before the first validation or deployment run.
+The deployed applications are available at `https://croesus-bff-a3v24wppuvd34-legacy.azurewebsites.net` and `https://croesus-bff-a3v24wppuvd34-modern.azurewebsites.net`. The shared Entra registration client ID is `3ee7b866-1d40-4746-a880-f7fda6d2d53e`. Redirect validation did not follow the Microsoft Entra login flow, so interactive sign-in and authorization-code redemption remain a user-interactive verification step. The demo credential expires one day after the successful deployment and should be rotated by redeploying or removed with the guarded teardown workflow.

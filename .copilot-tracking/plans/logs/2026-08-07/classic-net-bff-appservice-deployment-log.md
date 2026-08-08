@@ -25,18 +25,37 @@ Gaps and deviations identified during implementation.
   * Plan specifies: Preserve ownership state for guarded teardown without creating cross-run trust problems.
   * Implementation differs: Teardown rediscovers an exact display-name match and verifies the workflow ownership tag.
   * Rationale: This avoids publishing mutable state while preventing the workflow from claiming unrelated registrations.
+* DD-04: The deployment identity received Microsoft Graph `Application.ReadWrite.All` with tenant-admin consent.
+  * Plan specifies: Use GitHub OIDC for non-interactive Azure and Graph deployment.
+  * Implementation differs: Azure resource-group Contributor remained narrowly scoped, while Graph directory access was granted independently on the bootstrap application.
+  * Rationale: Azure RBAC does not authorize Microsoft Graph application creation or updates.
+* DD-05: Graph requests use file-backed JSON and bounded transient retries.
+  * Plan specifies: Converge the Entra application and rotate its short-lived credential non-interactively.
+  * Implementation differs: Request bodies are passed through temporary UTF-8 files; exact replication and credential-concurrency failures retry up to four attempts.
+  * Rationale: Windows native argument handling corrupted inline JSON, and Graph exposed eventual-consistency boundaries during live deployment.
+* DD-06: Live App Service diagnostics required two runtime configuration corrections.
+  * Plan specifies: Publish modern self-contained for `win-x64` and deploy the legacy `net452` proof.
+  * Implementation differs: The modern app explicitly uses a 64-bit worker, and legacy web.config redirects Newtonsoft.Json to 13.0.0.0.
+  * Rationale: The first package deployment exposed a modern host bitness mismatch and a legacy assembly binding failure.
+* DD-07: Deployment smoke tests validate protected routes and Entra challenge parameters instead of application roots alone.
+  * Plan specifies: Verify both deployed applications are testable.
+  * Implementation differs: Readiness checks assert protected endpoint behavior and exact login host, client ID, and callback URI with bounded startup retries.
+  * Rationale: The legacy root is intentionally anonymous and returned 200 even while its authentication challenge was failing.
 
 ## Suggested Follow-On Work
 
-* WI-01: Run the validation-only workflow manually after merge to confirm the hosted runner toolchain. (medium)
+* WI-01: Run the validation-only workflow manually after merge to confirm the hosted runner toolchain. (completed)
   * Source: Phase 4, workflow validation
   * Dependency: Repository workflow availability
-* WI-02: Configure required reviewers and Azure public variables on the `poc-demo` GitHub environment. (high)
+* WI-02: Configure required reviewers and Azure public variables on the `poc-demo` GitHub environment. (completed)
   * Source: Phase 4, deployment safety boundary
   * Dependency: Repository administrator access
 * WI-03: Correct the validation workflow's false-green Azure prerequisite handling. (completed)
   * Source: Hosted run 31215402276
   * Dependency: None
+* WI-04: Complete an interactive sign-in to each app and verify authorization-code redemption and session establishment. (medium)
+  * Source: Successful deployment run 31225818740
+  * Dependency: An authorized tenant user and interactive browser session
 
 ## User Decisions
 

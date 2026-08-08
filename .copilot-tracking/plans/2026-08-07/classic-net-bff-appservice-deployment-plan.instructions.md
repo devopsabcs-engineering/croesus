@@ -79,13 +79,13 @@ Add a repeatable, low-cost Azure demonstration deployment for the .NET Framework
 * [x] Step 5.2: Build and test both applications and validate all PowerShell scripts
 * [x] Step 5.3: Compile Bicep, validate workflow diagnostics, inspect publish artifacts, and scan for credential or RBAC regressions
 
-### [ ] Implementation Phase 6: Fail Honestly on What-If Prerequisite Errors
+### [x] Implementation Phase 6: Fail Honestly on What-If Prerequisite Errors
 
 <!-- depends-on: phase 5 -->
 
 * [x] Step 6.1: Check the Azure CLI exit code before parsing the resource-group existence result
 * [x] Step 6.2: Add a static regression check that prevents the false-green ordering from returning
-* [ ] Step 6.3: Validate, commit, push, and rerun the validation workflow
+* [x] Step 6.3: Validate, commit, push, and rerun the validation workflow
 
 ## Success Criteria
 
