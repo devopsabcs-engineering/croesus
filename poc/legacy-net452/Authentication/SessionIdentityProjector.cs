@@ -32,7 +32,11 @@ namespace Croesus.LegacyNet452.Authentication
             var claims = new List<Claim>();
             AddFirstClaim(claims, sourceIdentity, SubjectClaimTypes, ClaimTypes.NameIdentifier);
             AddFirstClaim(claims, sourceIdentity, NameClaimTypes, ClaimTypes.Name);
-            AddFirstClaim(claims, sourceIdentity, new[] { "tid" }, "tid");
+            AddFirstClaim(
+                claims,
+                sourceIdentity,
+                new[] { "tid", TenantPolicy.MappedTenantClaimType },
+                "tid");
 
             var identity = new ClaimsIdentity(
                 claims,

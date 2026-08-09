@@ -40,7 +40,9 @@ namespace Croesus.LegacyNet452.Tests
                 {
                     new Claim(ClaimTypes.NameIdentifier, "user-id"),
                     new Claim(ClaimTypes.Name, "Ada Lovelace"),
-                    new Claim("tid", TestSettings.HomeTenantId),
+                    new Claim(
+                        TenantPolicy.MappedTenantClaimType,
+                        TestSettings.HomeTenantId),
                     new Claim("access_token", "must-not-be-stored")
                 },
                 "validated");
@@ -56,6 +58,14 @@ namespace Croesus.LegacyNet452.Tests
                 new AuthenticationTicket(identity, properties));
 
             Assert.Equal(3, projected.Identity.Claims.Count());
+            var tenantClaim = Assert.Single(
+                projected.Identity.Claims,
+                claim => claim.Type == "tid");
+            Assert.Equal(TestSettings.HomeTenantId, tenantClaim.Value);
+            Assert.DoesNotContain(
+                projected.Identity.Claims,
+                claim => claim.Type == TenantPolicy.MappedTenantClaimType ||
+                    claim.Type == "access_token");
             Assert.Equal("/", projected.Properties.RedirectUri);
             Assert.DoesNotContain(
                 projected.Properties.Dictionary,

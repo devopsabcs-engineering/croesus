@@ -81,6 +81,10 @@ Gaps and deviations identified during implementation.
   * Plan specifies: Project a minimal server-side session after authorization-code redemption and return the browser to the challenged destination.
   * Implementation differs: `SessionIdentityProjector` copies only `AuthenticationProperties.RedirectUri` in addition to the existing lifetime fields; protocol dictionary entries remain excluded.
   * Rationale: Deployment run `31283791454` removed the cookie grant exception but the callback still ended as IIS `404.0` with Win32 status `2` and no authentication failure marker. The projector had discarded the protected `/` return URI, causing Katana to issue the cookie, return `false`, and fall through to IIS StaticFile handling.
+* DD-18: The minimal legacy session ticket normalizes Katana's mapped tenant claim.
+  * Plan specifies: Return authenticated session metadata with the validated tenant ID while excluding protocol claims and tokens.
+  * Implementation differs: `SessionIdentityProjector` accepts either literal `tid` or the same mapped tenant claim URI used by `TenantPolicy`, then emits one normalized `tid` claim.
+  * Rationale: Interactive verification after deployment run `31324506790` completed authentication and returned the display name, but tenant ID was null because Katana mapped the source claim before the minimal-ticket projection.
 
 ## Suggested Follow-On Work
 
@@ -95,7 +99,7 @@ Gaps and deviations identified during implementation.
   * Dependency: None
 * WI-04: Retry interactive sign-in to the corrected legacy app and verify authorization-code redemption and session establishment. (medium)
   * Source: Phase 8 cookie-grant and integrated-pipeline diagnostics
-  * Dependency: Deployment of the minimal-ticket return URI correction and an authorized tenant user in a fresh interactive browser session
+  * Dependency: Deployment of the mapped-tenant projection correction and an authorized tenant user in a fresh interactive browser session
 
 ## User Decisions
 

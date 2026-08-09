@@ -10,7 +10,7 @@ namespace Croesus.LegacyNet452.Authentication
     public static class TenantPolicy
     {
         private const string IssuerHost = "login.microsoftonline.com";
-        private const string MappedTenantClaimType =
+        internal const string MappedTenantClaimType =
             "http://schemas.microsoft.com/identity/claims/tenantid";
 
         public static void EnsureAllowedIdentity(

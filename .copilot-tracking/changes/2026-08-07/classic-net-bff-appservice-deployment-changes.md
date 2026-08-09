@@ -79,6 +79,9 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
 * `poc/legacy-net452/Authentication/SessionIdentityProjector.cs` - Preserves only the protected callback return URI when projecting the minimal session ticket
 * `poc/legacy-net452/Tests/SessionProjectionTests.cs` - Proves callback routing survives projection while protocol properties remain excluded
 * `.copilot-tracking/research/subagents/2026-08-09/katana-authenticate-stage-iis-404.md` - Traces the marker-free callback fall-through to the discarded ticket return URI
+* `poc/legacy-net452/Authentication/TenantPolicy.cs` - Shares the trusted Katana mapped tenant claim type with session projection
+* `poc/legacy-net452/Authentication/SessionIdentityProjector.cs` - Normalizes literal or mapped tenant claims to one minimal `tid` session claim
+* `poc/legacy-net452/Tests/SessionProjectionTests.cs` - Covers mapped tenant normalization and exclusion of mapped and protocol source claims
 
 ### Removed
 
@@ -122,6 +125,8 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
   * Reason: Katana's cookie extension inserts an `AuthenticateRequest` marker while unmarked OIDC defaults to `PreRequestHandlerExecute`, causing cookie teardown to apply the queued sign-in grant too late.
 * Preserved the protected callback return URI after the stage correction removed the cookie exception but left an IIS file-not-found response.
   * Reason: the minimal-ticket projector discarded `AuthenticationProperties.RedirectUri`, so Katana issued the session cookie without completing the callback redirect and allowed IIS StaticFile handling to continue.
+* Normalized Katana's mapped tenant claim after authenticated browser verification returned a display name without tenant metadata.
+  * Reason: tenant validation accepted the mapped source claim, but minimal-ticket projection searched only literal `tid` and silently omitted the validated tenant from the cookie.
 
 ## Release Summary
 
@@ -167,6 +172,9 @@ Validation:
 * Deployed legacy `/api/session` returned `401` without a `Location` header, and `/signin` returned the expected Entra challenge after the stage correction
 * The post-stage callback emitted no authentication failure marker but remained IIS `404.0` with Win32 status `2`, falsifying stage alignment as a complete correction
 * Minimal-ticket return URI regression failed before the correction and passed afterward; all 44 legacy Release tests and the deployment static suite passed
+* Deployment run `31324506790` completed validation and protected deployment successfully for commit `93a6299`
+* Interactive legacy authentication completed and returned `IsAuthenticated` plus display name; tenant ID remained null before mapped-claim normalization
+* Mapped-tenant projection regression failed before the correction and passed afterward; all 44 legacy Release tests and the deployment static suite passed
 * Both published IIS configurations contain a bounded `maxQueryString` of 8192 and retain their required OWIN or ANCM routing
 * Corrected deployment run `31233311155` completed both validation and protected deployment jobs successfully
 * Both deployed callback routes reached application-controlled handling with 2,100-character and 6,000-character query strings; IIS retained the intended rejection above the 8192-character bound
