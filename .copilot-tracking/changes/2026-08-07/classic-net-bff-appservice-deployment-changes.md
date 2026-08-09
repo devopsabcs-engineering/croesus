@@ -158,6 +158,8 @@ Validation:
 * Cookie-phase diagnostics passed 7 focused tests and all 44 legacy Release tests
 * Header-based cookie manager correction passed 3 focused tests and all 44 legacy Release tests
 * Post-OIDC authentication stage correction passed the deployment static suite and all 44 legacy Release tests
+* Deployment run `31283791454` completed validation and protected deployment successfully for commit `f86c6d6`
+* Deployed legacy `/api/session` returned `401` without a `Location` header, and `/signin` returned the expected Entra challenge after the stage correction
 * Both published IIS configurations contain a bounded `maxQueryString` of 8192 and retain their required OWIN or ANCM routing
 * Corrected deployment run `31233311155` completed both validation and protected deployment jobs successfully
 * Both deployed callback routes reached application-controlled handling with 2,100-character and 6,000-character query strings; IIS retained the intended rejection above the 8192-character bound

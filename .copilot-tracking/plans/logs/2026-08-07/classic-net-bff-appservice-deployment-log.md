@@ -91,7 +91,7 @@ Gaps and deviations identified during implementation.
   * Dependency: None
 * WI-04: Retry interactive sign-in to the corrected legacy app and verify authorization-code redemption and session establishment. (medium)
   * Source: Phase 8 cookie-grant and integrated-pipeline diagnostics
-  * Dependency: Deployment of the post-OIDC authentication stage marker and an authorized tenant user in a fresh interactive browser session
+  * Dependency: An authorized tenant user in a fresh interactive browser session against deployment run `31283791454`
 
 ## User Decisions
 
