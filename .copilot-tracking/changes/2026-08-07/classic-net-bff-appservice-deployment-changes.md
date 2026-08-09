@@ -76,6 +76,9 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
 * `poc/legacy-net452/README.md` - Documents the Katana cookie-manager choice and the required integrated-pipeline stage alignment
 * `scripts/test-classic-net-bff-deployment-entra-static.ps1` - Requires the post-OIDC authentication stage marker and its order after cookie middleware
 * `.copilot-tracking/research/subagents/2026-08-08/katana-apply-response-grant.md` - Records the manager-only falsification and identifies split IIS pipeline stages as the controlling callback defect
+* `poc/legacy-net452/Authentication/SessionIdentityProjector.cs` - Preserves only the protected callback return URI when projecting the minimal session ticket
+* `poc/legacy-net452/Tests/SessionProjectionTests.cs` - Proves callback routing survives projection while protocol properties remain excluded
+* `.copilot-tracking/research/subagents/2026-08-09/katana-authenticate-stage-iis-404.md` - Traces the marker-free callback fall-through to the discarded ticket return URI
 
 ### Removed
 
@@ -117,6 +120,8 @@ Implemented a repeatable B1-only Windows Azure App Service deployment for both c
   * Reason: the manager avoids `HttpResponse.AppendCookie`, but all System.Web-backed response-header writes still fail after response commitment.
 * Grouped cookie and OIDC middleware in the IIS authentication stage after source review exposed a split integrated pipeline.
   * Reason: Katana's cookie extension inserts an `AuthenticateRequest` marker while unmarked OIDC defaults to `PreRequestHandlerExecute`, causing cookie teardown to apply the queued sign-in grant too late.
+* Preserved the protected callback return URI after the stage correction removed the cookie exception but left an IIS file-not-found response.
+  * Reason: the minimal-ticket projector discarded `AuthenticationProperties.RedirectUri`, so Katana issued the session cookie without completing the callback redirect and allowed IIS StaticFile handling to continue.
 
 ## Release Summary
 
@@ -160,6 +165,8 @@ Validation:
 * Post-OIDC authentication stage correction passed the deployment static suite and all 44 legacy Release tests
 * Deployment run `31283791454` completed validation and protected deployment successfully for commit `f86c6d6`
 * Deployed legacy `/api/session` returned `401` without a `Location` header, and `/signin` returned the expected Entra challenge after the stage correction
+* The post-stage callback emitted no authentication failure marker but remained IIS `404.0` with Win32 status `2`, falsifying stage alignment as a complete correction
+* Minimal-ticket return URI regression failed before the correction and passed afterward; all 44 legacy Release tests and the deployment static suite passed
 * Both published IIS configurations contain a bounded `maxQueryString` of 8192 and retain their required OWIN or ANCM routing
 * Corrected deployment run `31233311155` completed both validation and protected deployment jobs successfully
 * Both deployed callback routes reached application-controlled handling with 2,100-character and 6,000-character query strings; IIS retained the intended rejection above the 8192-character bound

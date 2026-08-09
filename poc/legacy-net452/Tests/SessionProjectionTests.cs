@@ -33,7 +33,7 @@ namespace Croesus.LegacyNet452.Tests
         }
 
         [Fact]
-        public void MinimalTicketDropsProtocolClaimsAndAuthenticationProperties()
+        public void MinimalTicketDropsProtocolPropertiesButPreservesCallbackRouting()
         {
             var identity = new ClaimsIdentity(
                 new[]
@@ -50,11 +50,13 @@ namespace Croesus.LegacyNet452.Tests
                     { ".Token.access_token", "must-not-be-stored" },
                     { "code_verifier", "must-not-be-stored" }
                 });
+            properties.RedirectUri = "/";
 
             var projected = SessionIdentityProjector.CreateMinimalTicket(
                 new AuthenticationTicket(identity, properties));
 
             Assert.Equal(3, projected.Identity.Claims.Count());
+            Assert.Equal("/", projected.Properties.RedirectUri);
             Assert.DoesNotContain(
                 projected.Properties.Dictionary,
                 item => item.Key.IndexOf("token", System.StringComparison.OrdinalIgnoreCase) >= 0 ||

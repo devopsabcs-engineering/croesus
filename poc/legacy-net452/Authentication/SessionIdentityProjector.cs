@@ -44,7 +44,8 @@ namespace Croesus.LegacyNet452.Authentication
                 AllowRefresh = false,
                 IsPersistent = false,
                 IssuedUtc = source.Properties.IssuedUtc,
-                ExpiresUtc = source.Properties.ExpiresUtc
+                ExpiresUtc = source.Properties.ExpiresUtc,
+                RedirectUri = source.Properties.RedirectUri
             };
 
             return new AuthenticationTicket(identity, properties);

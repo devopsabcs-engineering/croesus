@@ -77,6 +77,10 @@ Gaps and deviations identified during implementation.
   * Plan specifies: Complete the legacy authorization-code callback through the configured OWIN pipeline.
   * Implementation differs: A post-OIDC `PipelineStage.Authenticate` marker groups OIDC with cookie middleware in the `AuthenticateRequest` segment while preserving cookie-before-OIDC registration order.
   * Rationale: Katana's cookie extension inserts an authentication marker immediately, while unmarked OIDC otherwise runs at `PreRequestHandlerExecute`; the split caused the earlier cookie segment to apply the queued sign-in grant after the callback response was committed.
+* DD-17: The minimal legacy session ticket preserves the protected callback return URI.
+  * Plan specifies: Project a minimal server-side session after authorization-code redemption and return the browser to the challenged destination.
+  * Implementation differs: `SessionIdentityProjector` copies only `AuthenticationProperties.RedirectUri` in addition to the existing lifetime fields; protocol dictionary entries remain excluded.
+  * Rationale: Deployment run `31283791454` removed the cookie grant exception but the callback still ended as IIS `404.0` with Win32 status `2` and no authentication failure marker. The projector had discarded the protected `/` return URI, causing Katana to issue the cookie, return `false`, and fall through to IIS StaticFile handling.
 
 ## Suggested Follow-On Work
 
@@ -91,7 +95,7 @@ Gaps and deviations identified during implementation.
   * Dependency: None
 * WI-04: Retry interactive sign-in to the corrected legacy app and verify authorization-code redemption and session establishment. (medium)
   * Source: Phase 8 cookie-grant and integrated-pipeline diagnostics
-  * Dependency: An authorized tenant user in a fresh interactive browser session against deployment run `31283791454`
+  * Dependency: Deployment of the minimal-ticket return URI correction and an authorized tenant user in a fresh interactive browser session
 
 ## User Decisions
 
