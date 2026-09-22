@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Croesus.BffYarp.csproj" />
+  <Project Path="Tests/Croesus.BffYarp.Tests.csproj" />
+</Solution>

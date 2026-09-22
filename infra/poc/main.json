@@ -1,0 +1,272 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "languageVersion": "2.0",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.47.16.16243",
+      "templateHash": "5151964940621306975"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Azure region for the App Service plan and both web apps."
+      }
+    },
+    "namePrefix": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 24,
+      "metadata": {
+        "description": "Name prefix used as the deterministic deployment seed."
+      }
+    },
+    "tenantId": {
+      "type": "string",
+      "minLength": 36,
+      "maxLength": 36,
+      "metadata": {
+        "description": "Home Microsoft Entra tenant ID."
+      }
+    },
+    "clientId": {
+      "type": "string",
+      "minLength": 36,
+      "maxLength": 36,
+      "metadata": {
+        "description": "Client ID of the shared confidential Microsoft Entra web registration."
+      }
+    },
+    "authenticationMode": {
+      "type": "string",
+      "defaultValue": "SingleTenant",
+      "allowedValues": [
+        "SingleTenant",
+        "Organizations"
+      ],
+      "metadata": {
+        "description": "Authentication authority mode for both applications."
+      }
+    },
+    "allowedTenantIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "defaultValue": [],
+      "metadata": {
+        "description": "Allowed Microsoft Entra tenant IDs. Organizations mode requires this list to contain the home tenant."
+      }
+    },
+    "clientSecret": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Short-lived client secret for the shared confidential web registration."
+      }
+    }
+  },
+  "variables": {
+    "copy": [
+      {
+        "name": "modernAllowedTenantSettings",
+        "count": "[length(variables('effectiveAllowedTenantIds'))]",
+        "input": {
+          "name": "[format('Authentication__AllowedTenantIds__{0}', copyIndex('modernAllowedTenantSettings'))]",
+          "value": "[variables('effectiveAllowedTenantIds')[copyIndex('modernAllowedTenantSettings')]]"
+        }
+      }
+    ],
+    "uniqueSuffix": "[uniqueString(subscription().id, resourceGroup().id, parameters('namePrefix'))]",
+    "appServicePlanName": "[format('croesus-bff-{0}-plan', variables('uniqueSuffix'))]",
+    "legacyAppName": "[format('croesus-bff-{0}-legacy', variables('uniqueSuffix'))]",
+    "modernAppName": "[format('croesus-bff-{0}-modern', variables('uniqueSuffix'))]",
+    "legacyHostName": "[format('{0}.azurewebsites.net', variables('legacyAppName'))]",
+    "modernHostName": "[format('{0}.azurewebsites.net', variables('modernAppName'))]",
+    "legacyBaseUrl": "[format('https://{0}', variables('legacyHostName'))]",
+    "modernBaseUrl": "[format('https://{0}', variables('modernHostName'))]",
+    "legacyCallbackUri": "[format('{0}/signin-oidc', variables('legacyBaseUrl'))]",
+    "modernCallbackUri": "[format('{0}/signin-oidc', variables('modernBaseUrl'))]",
+    "effectiveAllowedTenantIds": "[if(equals(parameters('authenticationMode'), 'SingleTenant'), createArray(parameters('tenantId')), union(createArray(parameters('tenantId')), parameters('allowedTenantIds')))]",
+    "authorityTenant": "[if(equals(parameters('authenticationMode'), 'Organizations'), 'organizations', parameters('tenantId'))]"
+  },
+  "resources": {
+    "appServicePlan": {
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2025-03-01",
+      "name": "[variables('appServicePlanName')]",
+      "location": "[parameters('location')]",
+      "kind": "app",
+      "sku": {
+        "name": "B1",
+        "tier": "Basic",
+        "capacity": 1
+      },
+      "properties": {
+        "reserved": false
+      }
+    },
+    "legacyApp": {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2025-03-01",
+      "name": "[variables('legacyAppName')]",
+      "location": "[parameters('location')]",
+      "kind": "app",
+      "properties": {
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
+        "httpsOnly": true,
+        "siteConfig": {
+          "alwaysOn": true,
+          "ftpsState": "Disabled",
+          "minTlsVersion": "1.2",
+          "netFrameworkVersion": "v4.0",
+          "appSettings": [
+            {
+              "name": "ClientId",
+              "value": "[parameters('clientId')]"
+            },
+            {
+              "name": "TenantId",
+              "value": "[parameters('tenantId')]"
+            },
+            {
+              "name": "AuthorityMode",
+              "value": "[parameters('authenticationMode')]"
+            },
+            {
+              "name": "AllowedTenantIds",
+              "value": "[join(variables('effectiveAllowedTenantIds'), ',')]"
+            },
+            {
+              "name": "ClientSecretEnvironmentVariable",
+              "value": "APPSETTING_CROESUS_LEGACY_CLIENT_SECRET"
+            },
+            {
+              "name": "CROESUS_LEGACY_CLIENT_SECRET",
+              "value": "[parameters('clientSecret')]"
+            },
+            {
+              "name": "RedirectUri",
+              "value": "[variables('legacyCallbackUri')]"
+            },
+            {
+              "name": "PostLogoutRedirectUri",
+              "value": "[format('{0}/', variables('legacyBaseUrl'))]"
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "appServicePlan"
+      ]
+    },
+    "modernApp": {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2025-03-01",
+      "name": "[variables('modernAppName')]",
+      "location": "[parameters('location')]",
+      "kind": "app",
+      "properties": {
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
+        "httpsOnly": true,
+        "siteConfig": {
+          "alwaysOn": true,
+          "appCommandLine": "Croesus.ModernBff.exe",
+          "ftpsState": "Disabled",
+          "minTlsVersion": "1.2",
+          "use32BitWorkerProcess": false,
+          "appSettings": "[concat(createArray(createObject('name', 'ASPNETCORE_ENVIRONMENT', 'value', 'Poc'), createObject('name', 'AzureAd__Instance', 'value', environment().authentication.loginEndpoint), createObject('name', 'AzureAd__TenantId', 'value', variables('authorityTenant')), createObject('name', 'AzureAd__ClientId', 'value', parameters('clientId')), createObject('name', 'AzureAd__ClientSecret', 'value', parameters('clientSecret')), createObject('name', 'AzureAd__CallbackPath', 'value', '/signin-oidc'), createObject('name', 'Authentication__Mode', 'value', parameters('authenticationMode')), createObject('name', 'AllowedHosts', 'value', variables('modernHostName'))), variables('modernAllowedTenantSettings'))]"
+        }
+      },
+      "dependsOn": [
+        "appServicePlan"
+      ]
+    }
+  },
+  "outputs": {
+    "appServicePlanName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the shared Windows B1 App Service plan."
+      },
+      "value": "[variables('appServicePlanName')]"
+    },
+    "legacyAppName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the legacy .NET Framework web app."
+      },
+      "value": "[variables('legacyAppName')]"
+    },
+    "modernAppName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the modern self-contained .NET web app."
+      },
+      "value": "[variables('modernAppName')]"
+    },
+    "legacyHostName": {
+      "type": "string",
+      "metadata": {
+        "description": "Default host name of the legacy web app."
+      },
+      "value": "[reference('legacyApp').defaultHostName]"
+    },
+    "modernHostName": {
+      "type": "string",
+      "metadata": {
+        "description": "Default host name of the modern web app."
+      },
+      "value": "[reference('modernApp').defaultHostName]"
+    },
+    "legacyBaseUrl": {
+      "type": "string",
+      "metadata": {
+        "description": "HTTPS base URL of the legacy web app."
+      },
+      "value": "[variables('legacyBaseUrl')]"
+    },
+    "modernBaseUrl": {
+      "type": "string",
+      "metadata": {
+        "description": "HTTPS base URL of the modern web app."
+      },
+      "value": "[variables('modernBaseUrl')]"
+    },
+    "legacyCallbackUri": {
+      "type": "string",
+      "metadata": {
+        "description": "Microsoft Entra web callback URI of the legacy web app."
+      },
+      "value": "[variables('legacyCallbackUri')]"
+    },
+    "modernCallbackUri": {
+      "type": "string",
+      "metadata": {
+        "description": "Microsoft Entra web callback URI of the modern web app."
+      },
+      "value": "[variables('modernCallbackUri')]"
+    },
+    "registrationInputs": {
+      "type": "object",
+      "metadata": {
+        "description": "Non-secret inputs for converging the shared Microsoft Entra web registration."
+      },
+      "value": {
+        "allowedTenantIds": "[variables('effectiveAllowedTenantIds')]",
+        "authenticationMode": "[parameters('authenticationMode')]",
+        "clientId": "[parameters('clientId')]",
+        "displayName": "[format('croesus-bff-{0}-web', variables('uniqueSuffix'))]",
+        "homeTenantId": "[parameters('tenantId')]",
+        "signInAudience": "[if(equals(parameters('authenticationMode'), 'Organizations'), 'AzureADMultipleOrgs', 'AzureADMyOrg')]",
+        "webRedirectUris": [
+          "[variables('legacyCallbackUri')]",
+          "[variables('modernCallbackUri')]"
+        ]
+      }
+    }
+  }
+}

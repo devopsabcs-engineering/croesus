@@ -3,6 +3,30 @@
 
 ## Discrepancy Log
 
+### Findings From Implementation Phase 1
+
+* DD-17: The plan's founding premise is falsified by tenant evidence (critical)
+  * Plan specifies: public network access stays disabled because Azure Policy prohibits enabling it
+  * Implementation found: no policy assignment at subscription scope or tenant root management group scope enforces publicNetworkAccess on Microsoft.Web/sites. The enforced deny initiative has no Microsoft.Web member. The enforced modify initiative covers AI Foundry Hub, Storage, Key Vault, Cosmos DB, and Azure SQL, with no App Service equivalent. Exemption list is empty.
+  * Rationale: recorded rather than worked around, because designing against an imagined constraint is the failure mode the research rewrite was meant to eliminate
+  * Consequence: private ingress is an elective architecture, not a compliance obligation. Re-enabling public ingress is not policy-blocked.
+  * Resolves DR-01 by falsification rather than by confirmation
+* DD-18: Implementation Phase 2 is blocked on an unanticipated prerequisite (critical)
+  * Plan specifies: add per-app private endpoints to the existing App Service plan, on the research finding that Basic B1 supports them
+  * Implementation found: the deployed plan is F1 Free, which supports neither private endpoints nor VNet integration. The B1 research finding is correct; the deployed plan is simply not B1.
+  * Secondary finding: infra/poc/main.bicep declares B1, so the deployed resources diverge from the template in this repository
+  * Consequence: every Step 2.2 through Step 2.4 endpoint action is unreachable until the tier and the template divergence are resolved
+* DD-19: No private network path exists in the subscription (high)
+  * Plan specifies: Step 1.2 selects a browser path and a deployment runner path from existing approved infrastructure
+  * Implementation found: no privatelink.azurewebsites.net zone, no VPN or ExpressRoute gateway, no Bastion, no peering. croesus-vnet in rg-croesus is shaped for this purpose but sits in Canada Central while the POC apps are in Canada East, and nothing connects to it.
+  * Consequence: both the browser path and the runner path are recorded as undetermined rather than selected
+* DD-20: Step 1.3 returned blocked and Step 1.4 returned out of scope (medium)
+  * Both are legitimate recorded branches rather than deviations, captured here so the downstream effect is traceable
+  * Step 3.7 executes its blocked branch; no artefact may claim the BFF fronts the legacy app
+  * The two-app scope is reduced by a recorded gate outcome, not silently
+
+## Discrepancy Log (Planning Phase)
+
 Gaps and differences identified between research findings and the implementation plan.
 
 ### Unaddressed Research Items
@@ -209,6 +233,35 @@ The following entries were raised by plan validation and have been closed by pla
 * Rejection rationale: The BFF is additive by design; keeping it in a new directory preserves the comparison and keeps four phases parallelizable
 
 ## Suggested Follow-On Work
+
+### Raised During Implementation
+
+* WI-10: Re-ratify the ingress architecture before Phase 2 resumes (critical)
+  * Source: Phase 1, Step 1.1
+  * Private ingress is elective, not compelled. The engagement owner should confirm intent now that the compliance rationale is gone.
+  * Dependency: none; this is the ID-01 decision
+* WI-11: Resolve the Bicep and deployment divergence on the plan SKU (high)
+  * Source: Phase 1, Step 1.2
+  * infra/poc/main.bicep declares B1 but the deployed plan is F1. The deployed resources may not have come from this template, which undermines the template as a source of truth.
+  * Dependency: none
+* WI-12: Name the region decision for any private endpoint (high)
+  * Source: Phase 1, Step 1.2
+  * croesus-vnet is in Canada Central; the POC apps are in Canada East. Either a cross-region endpoint or a new Canada East VNet must be chosen.
+  * Dependency: WI-10
+* WI-13: Add control-removal pairs for the two unpaired evidence assertions (low)
+  * Source: Phase 3, Step 3.5
+  * `Evidence_SetsCacheControlNoStore` and `Evidence_RequiresAnAuthenticatedSession` assert observed behaviour without a paired removal test, so their non-vacuity is unproven.
+  * Dependency: none
+* WI-14: Extend teardown-app-registrations.sh to the new BFF registration (medium)
+  * Source: Phase 4, Step 4.1
+  * Teardown does not consume the new `bffAppId` state key and does not delete the BFF certificate, so repeated provision and teardown cycles will leak both.
+  * Dependency: none
+* WI-15: Add configuration-contract rows for the new BFF keys (low)
+  * Source: Phase 4, Step 4.1
+  * docs/configuration-contract.md has no row for `croesus-bff-cert` or `BFF_CLIENT_ID`. Phase 7 Step 7.1 already owns this file and can absorb it.
+  * Dependency: Phase 7
+
+### Raised During Planning
 
 Items identified during planning that fall outside current scope.
 

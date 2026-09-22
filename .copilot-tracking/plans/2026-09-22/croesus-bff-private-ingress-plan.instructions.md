@@ -59,20 +59,22 @@ Restore reachability to the Croesus POC App Services through per-app private end
 
 Execution waves: Phase 1 runs alone. Phases 2, 3, 4, and 5 form wave 1 and may run concurrently, with no data dependency between them because Step 2.4 and Step 4.1 both read the BFF hostname recorded in Step 1.2. Phases 6 and 7 form wave 2 and may run concurrently with each other once wave 1 completes. Phase 8 runs last. Parallel phases append only under their own uniquely titled section of the changes file and never rewrite another phase's section.
 
-### [ ] Implementation Phase 1: Prerequisite Verification and Gate Capture
+### [x] Implementation Phase 1: Prerequisite Verification and Gate Capture
 
 <!-- parallelizable: false -->
 
-* [ ] Step 1.1: Capture effective Azure Policy evidence
+* [x] Step 1.1: Capture effective Azure Policy evidence
   * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 24-65)
-* [ ] Step 1.2: Confirm reusable network, DNS, browser, and runner topology
+* [x] Step 1.2: Confirm reusable network, DNS, browser, and runner topology
   * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 66-104)
-* [ ] Step 1.3: Gate the legacy comparison app on supported-target review
+* [x] Step 1.3: Gate the legacy comparison app on supported-target review
   * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 106-134)
-* [ ] Step 1.4: Decide legacy identity bridge scope and bypass prevention
+* [x] Step 1.4: Decide legacy identity bridge scope and bypass prevention
   * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 135-168)
 
 ### [ ] Implementation Phase 2: Private Ingress Infrastructure
+
+BLOCKED by Phase 1. The deployed App Service plan is F1 Free, which supports no private endpoint, and no private network path exists in the subscription. The Azure Policy premise that motivated this phase was falsified. Awaiting the ID-01 architecture decision.
 
 <!-- parallelizable: true -->
 
@@ -87,38 +89,38 @@ Execution waves: Phase 1 runs alone. Phases 2, 3, 4, and 5 form wave 1 and may r
 * [ ] Step 2.5: Validate phase changes
   * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 294-306)
 
-### [ ] Implementation Phase 3: Reference BFF Application
+### [x] Implementation Phase 3: Reference BFF Application
 
 <!-- parallelizable: true -->
 
-* [ ] Step 3.1: Scaffold the project and test project from the modern app conventions
+* [x] Step 3.1: Scaffold the project and test project from the modern app conventions
   * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 313-352)
-* [ ] Step 3.2: Implement server-side token and session custody
+* [x] Step 3.2: Implement server-side token and session custody
   * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 353-388)
-* [ ] Step 3.3: Implement the constrained proxy boundary
+* [x] Step 3.3: Implement the constrained proxy boundary
   * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 389-426)
-* [ ] Step 3.4: Implement the session and token lifecycle
+* [x] Step 3.4: Implement the session and token lifecycle
   * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 427-458)
-* [ ] Step 3.5: Implement the sanitized evidence surface
+* [x] Step 3.5: Implement the sanitized evidence surface
   * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 459-501)
-* [ ] Step 3.6: Implement negative authorization and protocol tests
+* [x] Step 3.6: Implement negative authorization and protocol tests
   * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 502-541)
-* [ ] Step 3.7: Implement the legacy bridge contract or record it blocked
+* [x] Step 3.7: Implement the legacy bridge contract or record it blocked
   * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 542-581)
-* [ ] Step 3.8: Validate phase changes
+* [x] Step 3.8: Validate phase changes
   * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 582-592)
 
-### [ ] Implementation Phase 4: Registration and Evidence Queries
+### [x] Implementation Phase 4: Registration and Evidence Queries
 
 <!-- parallelizable: true -->
 
-* [ ] Step 4.1: Add the confidential BFF registration block
+* [x] Step 4.1: Add the confidential BFF registration block
   * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 599-637)
-* [ ] Step 4.2: Set the owned API token version and optional claims
+* [x] Step 4.2: Set the owned API token version and optional claims
   * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 638-670)
-* [ ] Step 4.3: Replace speculative KQL with operation-mapped queries
+* [x] Step 4.3: Replace speculative KQL with operation-mapped queries
   * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 671-709)
-* [ ] Step 4.4: Validate phase changes
+* [x] Step 4.4: Validate phase changes
   * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 710-720)
 
 ### [ ] Implementation Phase 5: Provisioning and Verification Scripts

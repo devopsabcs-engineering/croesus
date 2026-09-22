@@ -1,128 +1,180 @@
 // evidence-kql.kusto
 //
-// Corroborating sign-in-log evidence for the Croesus mock SaaS OBO flow.
-// These queries run in Log Analytics (the workspace that receives the Entra
-// sign-in diagnostic settings) and corroborate the PRIMARY evidence, which is
-// the API's App Insights claim logging of both token legs.
+// Tenant sign-in log queries that CORROBORATE the Croesus mock SaaS flow.
 //
-// Run each query block on its own (Log Analytics executes one query at a time).
-// Filter by IMMUTABLE application ids, not display names: display names can be
-// renamed and are not identity. Substitute the two client-id GUIDs captured from
-// scripts/provision-app-registrations.sh output before running:
-//   <SPA_CLIENT_ID> -> spa_client_id (interactive SPA client)
-//   <API_CLIENT_ID> -> api_client_id (middle-tier API client of the OBO leg)
-// Microsoft Graph's immutable appId is the well-known, cross-tenant constant
-// 00000003-0000-0000-c000-000000000000 (used below for the Graph resource leg).
+// Scope and limits, read before using any result:
 //
-// These sign-in-log queries are CORROBORATING and BEST-EFFORT: they show two
-// distinct sign-in legs of one session (distinct clients, resources, audiences).
-// They do NOT and cannot prove that identical bearer-token bytes were reused
-// across requests — bearer-byte continuity is not recorded in sign-in logs.
+//   * No query here is a release gate on its own. Each one narrows a question;
+//     none of them closes one.
+//   * Sign-in logs record token ISSUANCE events. They do not record which bytes
+//     a client presented on a later request, so nothing here can establish that
+//     a specific token was, or was not, reused.
+//   * A row showing one audience and a later row showing a different audience is
+//     consistent with a delegated downstream exchange. It is equally consistent
+//     with two independent token requests. Two distinct audiences, or two
+//     distinct token identifiers, do not by themselves identify the grant that
+//     produced either token.
+//   * These tables do not name the grant type. A populated credential field
+//     tells you a credential was used; it does not tell you which OAuth grant
+//     was exercised.
+//   * Categories populate independently. SigninLogs, the non-interactive table,
+//     the service-principal table, and the audit table each have their own
+//     population rules, and a given user action may land in one, several, or
+//     none of them. Absence of a row in one table is not evidence that the
+//     corresponding step did not happen.
 //
-// PRIMARY Tier 2a evidence is NOT in these sign-in logs: the API emits a
-// distinct App Insights custom event named "ReplayAttempt" for each gated
-// server-side replay, kept separate from the OBO "TokenExchange" event so the
-// two never mix. Query it in Application Insights (not Log Analytics), e.g.:
-//   customEvents | where name == "ReplayAttempt" | order by timestamp desc
-// The queries below CORROBORATE that primary evidence from the tenant sign-in
-// logs.
+// The authoritative per-request record is the API's own Application Insights
+// telemetry: the OboExchange and ReplayAttempt custom events emitted by
+// api/Telemetry/OboClaimLogger.cs. Those events carry the per-operation
+// identifiers the application actually observed. The queries below take those
+// observed identifiers as INPUT; they do not attempt to rediscover them by
+// assuming one correlation identifier spans every leg of a flow.
+//
+// Placeholders to substitute before running (none are secrets):
+//   <RUN_ID>              run identifier stamped on the App Insights events for
+//                         one execution. Selects which OboExchange /
+//                         ReplayAttempt events to read the per-operation
+//                         identifiers from, and is carried through as an
+//                         annotation column so runs cannot be conflated.
+//   <RUN_START>/<RUN_END> ISO 8601 UTC bounds of that run.
+//   <OBO_CORRELATION_ID_n>  leg2.correlationId values from the OboExchange
+//                         events of that run: the correlation id MSAL sent on
+//                         the outbound leg, observed rather than assumed.
+//   <LEG1_TOKEN_ID_n>     leg1 token identifiers captured by the same events.
+//   <API_SP_OBJECT_ID>    tenant service principal OBJECT id of the API app.
+//   <BFF_SP_OBJECT_ID>    tenant service principal OBJECT id of the BFF app.
+//   <GRAPH_SP_OBJECT_ID>  tenant service principal OBJECT id of Microsoft Graph.
+//
+// Resolve the object ids once per tenant. Microsoft Graph's APPLICATION id is a
+// cross-tenant constant, but its SERVICE PRINCIPAL object id is tenant-specific,
+// which is why the queries compare against the object id rather than against the
+// well-known application id:
+//   az ad sp show --id <API_CLIENT_ID> --query id -o tsv
+//   az ad sp show --id <BFF_CLIENT_ID> --query id -o tsv
+//   az ad sp show --id 00000003-0000-0000-c000-000000000000 --query id -o tsv
+//
+// Run each query block on its own; Log Analytics executes one query at a time.
+// Every query is bounded in time. Widen a window deliberately, never by default.
 
 // =============================================================================
-// Query 1 - Interactive SPA sign-in (leg 0: user -> SPA)
-// Lands in SigninLogs because it is an interactive user sign-in.
+// Query 1 - Run-scoped sign-in rows for the identifiers the application observed
+//
+// Selects only rows whose correlation id or unique token identifier appears in
+// the set the application recorded for run <RUN_ID>. This is a membership test
+// against observed values. It does not assume a shared correlation identifier
+// and it does not join one leg to another.
+//
+// What this does NOT prove: that any listed token was presented to a downstream
+// resource; that the rows shown belong to one logical user operation; that the
+// set is complete, since a leg whose identifier the application did not capture
+// cannot appear. Rows evidence issuance for the identifiers supplied, no more.
 // =============================================================================
+let runId = "<RUN_ID>";
+let runStart = datetime(<RUN_START>);
+let runEnd = datetime(<RUN_END>);
+let observedCorrelationIds = dynamic(["<OBO_CORRELATION_ID_1>", "<OBO_CORRELATION_ID_2>"]);
+let observedTokenIds = dynamic(["<LEG1_TOKEN_ID_1>", "<LEG1_TOKEN_ID_2>"]);
+union
+    (SigninLogs                      | extend SourceTable = "SigninLogs"),
+    (AADNonInteractiveUserSignInLogs | extend SourceTable = "AADNonInteractiveUserSignInLogs")
+| where TimeGenerated between (runStart .. runEnd)
+| where CorrelationId in (observedCorrelationIds)
+     or UniqueTokenIdentifier in (observedTokenIds)
+| extend RunId = runId
+| project TimeGenerated, RunId, SourceTable, CorrelationId, UniqueTokenIdentifier,
+          AppId, AppDisplayName, ResourceIdentity, ResourceDisplayName,
+          UserPrincipalName, ResultType, ResultDescription
+| sort by TimeGenerated asc
+
+// =============================================================================
+// Query 2 - Resource legs resolved by tenant service principal object id
+//
+// Sign-in rows identify the resource by its service principal object id in THIS
+// tenant. Comparing that column against a globally known application id is a
+// category error that silently returns nothing. This query filters on object ids
+// resolved from the tenant and reports the resolved identity beside each row, so
+// the mapping is visible rather than implied.
+//
+// What this does NOT prove: which grant produced each row; that the rows are
+// causally linked; that a token issued for one resource was later forwarded to
+// another. It establishes only which resources were the target of token requests
+// attributable to these clients inside the window.
+// =============================================================================
+let lookback = 1h;
+let apiSpId = "<API_SP_OBJECT_ID>";
+let bffSpId = "<BFF_SP_OBJECT_ID>";
+let graphSpId = "<GRAPH_SP_OBJECT_ID>";
+let knownResources = dynamic({
+    "<API_SP_OBJECT_ID>": "Croesus API (tenant SP)",
+    "<BFF_SP_OBJECT_ID>": "Croesus BFF (tenant SP)",
+    "<GRAPH_SP_OBJECT_ID>": "Microsoft Graph (tenant SP)"
+});
+union
+    (SigninLogs                      | extend SourceTable = "SigninLogs"),
+    (AADNonInteractiveUserSignInLogs | extend SourceTable = "AADNonInteractiveUserSignInLogs")
+| where TimeGenerated > ago(lookback)
+| where ResourceIdentity in (apiSpId, bffSpId, graphSpId)
+| extend ResolvedResource = tostring(knownResources[tostring(ResourceIdentity)])
+| project TimeGenerated, SourceTable, AppId, AppDisplayName,
+          ResourceIdentity, ResolvedResource, ResourceDisplayName,
+          UserPrincipalName, CorrelationId, UniqueTokenIdentifier, ResultType
+| sort by TimeGenerated asc
+
+// =============================================================================
+// Query 3 - Conditional Access evaluation, expanded per policy
+//
+// One sign-in is evaluated against many policies. Collapsing that to a single
+// pass or fail hides which policy spoke and whether it was enforcing at the
+// time. This expands the policy array and reports, for every policy touched: the
+// policy identifier, the target resource, the EVALUATION MODE, and the result.
+//
+// Evaluation mode matters more than the result. A reportOnly result records what
+// a policy WOULD have done; it did not gate the sign-in. Reading a report-only
+// success as enforcement is the most common misuse of this data.
+//
+// What this does NOT prove: that an enforced policy applied to every request in
+// a session; that a policy absent from a row is inactive; that a notApplied
+// result reflects a decision rather than a scoping condition that was not met.
+// =============================================================================
+let lookback = 1h;
 SigninLogs
-| where TimeGenerated > ago(1h)
-| where AppId == "<SPA_CLIENT_ID>"   // immutable SPA client appId
-| project TimeGenerated, CorrelationId, AppId, AppDisplayName, ResourceDisplayName, UserPrincipalName, Status
-| sort by TimeGenerated asc
-
-// =============================================================================
-// Query 2 - OBO legs (PRIMARY corroboration): API -> API token and API -> Graph
-// The middle-tier OBO exchange is non-interactive, so it lands in
-// AADNonInteractiveUserSignInLogs. The API->Graph row shows
-// ResourceDisplayName == "Microsoft Graph" while the SPA->API row shows the API
-// as the resource: distinct tokens for distinct audiences, not one token reused.
-// The preserved UserPrincipalName proves the delegated user identity flowed
-// through (an app-only client-credentials call would show no user).
-// =============================================================================
-AADNonInteractiveUserSignInLogs
-| where TimeGenerated > ago(1h)
-| where AppId == "<API_CLIENT_ID>"   // immutable API client appId (OBO middle tier)
-    or ResourceIdentity == "00000003-0000-0000-c000-000000000000"   // Microsoft Graph well-known appId
-| project TimeGenerated, CorrelationId, AppId, AppDisplayName, ResourceIdentity, ResourceDisplayName,
-          UserPrincipalName, Status
-| sort by TimeGenerated asc
-
-// =============================================================================
-// Query 3 - Token Protection bound vs unbound (OPTIONAL, ADVANCED EXHIBIT ONLY)
-// NOT the OBO proof. The Token Protection / sign-in-session-binding signal
-// (signInSessionStatusCode 1008 = unbound) is populated for native apps on
-// registered devices accessing Exchange Online / SharePoint Online / Teams, and
-// will generally NOT appear for a browser SPA + custom API + Graph flow. Include
-// this only as a separate, clearly-labeled "device-bound session" exhibit.
-// =============================================================================
-AADNonInteractiveUserSignInLogs
-| where TimeGenerated > ago(7d)
-| where TokenProtectionStatusDetails != ""
-| extend d = parse_json(TokenProtectionStatusDetails)
-| extend bindingStatus     = tostring(d["signInSessionStatus"])     // "Bound" / "Unbound"
-| extend bindingStatusCode = tostring(d["signInSessionStatusCode"]) // 1002/1003/1005/1006/1008
-| project TimeGenerated, UserPrincipalName, AppDisplayName, ResourceDisplayName,
-          bindingStatus, bindingStatusCode
+| where TimeGenerated > ago(lookback)
+| mv-expand caPolicy = todynamic(ConditionalAccessPolicies)
+| extend PolicyId = tostring(caPolicy.id),
+         PolicyName = tostring(caPolicy.displayName),
+         PolicyResult = tostring(caPolicy.result)
+| extend EvaluationMode = case(
+             PolicyResult startswith "reportOnly", "ReportOnly",
+             PolicyResult in ("success", "failure", "notApplied"), "Enforced",
+             "Unknown")
+| project TimeGenerated, UserPrincipalName, AppDisplayName,
+          TargetResource = ResourceDisplayName, ResourceIdentity,
+          PolicyId, PolicyName, EvaluationMode, PolicyResult,
+          SignInResult = ResultType, CorrelationId
 | sort by TimeGenerated desc
 
 // =============================================================================
-// Query 4 - Unbound / 1008 evidence (Tier 2b, SUPPORTED-RESOURCE EXHIBIT ONLY)
-// Surfaces non-interactive sign-ins that Token Protection evaluated as Unbound
-// with signInSessionStatusCode 1008 ("the client isn't integrated with the
-// platform broker, such as Windows Account Manager (WAM)"). This populates ONLY
-// when a report-only (or enforced) Token Protection CA policy is in scope for a
-// native-app client reaching Exchange Online / SharePoint Online / Teams; it
-// will NOT appear for the browser SPA -> custom API -> Graph flow. Provision the
-// report-only policy with scripts/provision-ca-policy.sh first.
+// Query 4 - Token Protection session binding (separate, optional exhibit)
+//
+// Reports the sign-in-session binding status where Token Protection populated
+// it. This is a device-binding exhibit, unrelated to the questions the queries
+// above address, and is kept separate so the two are not read together.
+//
+// The signal populates only for native-app clients on registered devices
+// reaching resources that support it, and only when a Token Protection policy is
+// in scope. For a browser client calling a custom API it will usually be empty.
+//
+// What this does NOT prove: anything about token reuse, grant type, or the
+// Croesus flow. An empty result means the signal did not populate, which is the
+// expected outcome here and is not a negative finding.
 // =============================================================================
+let lookback = 7d;
 AADNonInteractiveUserSignInLogs
-| where TimeGenerated > ago(7d)
-| where TokenProtectionStatusDetails != ""
+| where TimeGenerated > ago(lookback)
+| where isnotempty(TokenProtectionStatusDetails)
 | extend parsed = parse_json(TokenProtectionStatusDetails)
-| extend bindingStatus     = tostring(parsed["signInSessionStatus"])     // "Unbound"
-| extend bindingStatusCode = tostring(parsed["signInSessionStatusCode"]) // "1008"
-| where bindingStatusCode == "1008"
+| extend BindingStatus = tostring(parsed["signInSessionStatus"]),
+         BindingStatusCode = tostring(parsed["signInSessionStatusCode"])
 | project TimeGenerated, UserPrincipalName, AppDisplayName, ResourceDisplayName,
-          IPAddress, bindingStatus, bindingStatusCode, CorrelationId, Id
+          BindingStatus, BindingStatusCode, CorrelationId
 | sort by TimeGenerated desc
-
-// =============================================================================
-// Query 5 - Correlate the two legs (interactive SPA sign-in <-> non-interactive
-// second leg). Joins SigninLogs (leg 1, interactive) to
-// AADNonInteractiveUserSignInLogs (leg 2, non-interactive) on CorrelationId +
-// UserPrincipalName, so the two legs of one session sit side by side: distinct
-// resources, distinct IPs, and (when a Token Protection policy is in scope) the
-// leg-2 binding status. This correlation is BEST-EFFORT ONLY: CorrelationId is
-// derived from client-passed parameters (so the join also pins
-// UserPrincipalName), and the join corroborates two distinct sign-in legs of one
-// session — it does NOT and cannot prove that identical bearer-token bytes were
-// reused across requests. Widen the time window or add UniqueTokenIdentifier if a
-// session does not line up.
-// =============================================================================
-let interactive =
-    SigninLogs
-    | where TimeGenerated > ago(1d)
-    | where AppId == "<SPA_CLIENT_ID>"   // immutable SPA client appId
-    | project L1_Time=TimeGenerated, CorrelationId, UserPrincipalName,
-              L1_IP=IPAddress, L1_Resource=ResourceDisplayName,
-              L1_UniqueTokenId=UniqueTokenIdentifier;
-let secondLeg =
-    AADNonInteractiveUserSignInLogs
-    | where TimeGenerated > ago(1d)
-    | extend tp = parse_json(TokenProtectionStatusDetails)
-    | project L2_Time=TimeGenerated, CorrelationId, UserPrincipalName,
-              L2_IP=IPAddress, L2_Resource=ResourceDisplayName, L2_App=AppDisplayName,
-              L2_Bind=tostring(tp["signInSessionStatus"]),
-              L2_Code=tostring(tp["signInSessionStatusCode"]);
-interactive
-| join kind=inner secondLeg on CorrelationId, UserPrincipalName
-| project UserPrincipalName, CorrelationId, L1_Time, L1_IP, L1_Resource,
-          L2_Time, L2_IP, L2_App, L2_Resource, L2_Bind, L2_Code
-| sort by L1_Time desc

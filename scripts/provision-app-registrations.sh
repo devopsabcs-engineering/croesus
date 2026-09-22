@@ -10,6 +10,11 @@
 #                           and has Microsoft Graph User.Read (delegated) consented.
 #   Registration A (SPA)   - public client, pre-authorized for the API scope,
 #                           with a `spa` platform redirect URI.
+#   Registration C (BFF)   - confidential WEB client for the server-side
+#                           back-end-for-frontend. Its own registration, not a
+#                           reuse of the SPA one, because a registration carries
+#                           a single front-channel logout URL. Certificate
+#                           credential in Key Vault; no client secret literal.
 #
 # Re-running this script MUST NOT create duplicate registrations: every object is
 # looked up by display name (apps) or name (certificate) before it is created.
@@ -30,6 +35,17 @@
 #   SPA_DEPLOYED_REDIRECT_URI (optional) deployed SPA origin, e.g.
 #                        https://croesus-spa.azurewebsites.net. Registered
 #                        alongside SPA_REDIRECT_URI when set.
+#   BFF_DISPLAY_NAME     (default: "Croesus GPD Central BFF (mock)")
+#   BFF_BASE_URI         (default: the reference BFF origin) origin the BFF's
+#                        OIDC redirect URIs are built from. A normal HTTPS
+#                        hostname; no scheme or path variations are derived here.
+#                        This is the dedicated BFF site provisioned by the
+#                        deployBffSite parameter in infra/poc/main.bicep, NOT the
+#                        existing -modern app, which already owns /signin-oidc on
+#                        the shared registration. Override when deployBffSite is
+#                        false and the BFF is hosted elsewhere.
+#   BFF_CERT_NAME        (default: croesus-bff-cert) Key Vault certificate name
+#                        for the BFF confidential-client credential.
 #   SIGN_IN_AUDIENCE     (default: AzureADMyOrg) single-tenant demo shape.
 #   STATE_FILE           (default: .demo-state.json) machine-readable record of
 #                        created object ids used by the reversible teardown.
@@ -45,7 +61,7 @@
 #                        when unset.
 #
 # Outputs (written to $GITHUB_OUTPUT when set, otherwise echoed):
-#   api_client_id, spa_client_id, api_scope
+#   api_client_id, spa_client_id, bff_client_id, api_scope
 #
 set -euo pipefail
 
@@ -60,6 +76,10 @@ API_DISPLAY_NAME="${API_DISPLAY_NAME:-Croesus GPD Central API (mock)}"
 SPA_DISPLAY_NAME="${SPA_DISPLAY_NAME:-Croesus GPD Central SPA (mock)}"
 SPA_REDIRECT_URI="${SPA_REDIRECT_URI:-https://localhost:3000}"
 SPA_DEPLOYED_REDIRECT_URI="${SPA_DEPLOYED_REDIRECT_URI:-}"
+BFF_DISPLAY_NAME="${BFF_DISPLAY_NAME:-Croesus GPD Central BFF (mock)}"
+BFF_BASE_URI="${BFF_BASE_URI:-https://croesus-bff-a3v24wppuvd34-bff.azurewebsites.net}"
+BFF_BASE_URI="${BFF_BASE_URI%/}"   # tolerate a trailing slash without emitting a duplicate URI
+BFF_CERT_NAME="${BFF_CERT_NAME:-croesus-bff-cert}"
 SIGN_IN_AUDIENCE="${SIGN_IN_AUDIENCE:-AzureADMyOrg}"
 STATE_FILE="${STATE_FILE:-.demo-state.json}"
 PERSIST_REPO_VARIABLES="${PERSIST_REPO_VARIABLES:-auto}"
@@ -101,6 +121,55 @@ ensure_sp() {
     log "Creating service principal for $app_id"
     az ad sp create --id "$app_id" >/dev/null
   fi
+}
+
+# Ensure a Key Vault certificate exists and is attached to an app registration as
+# its confidential-client credential. Idempotent on both halves: the certificate
+# is created only when the vault has none by that name, and it is attached only
+# when the registration has no key credential yet, so re-runs never accumulate
+# credentials. The private key never leaves Key Vault and is never printed.
+# This is the credential convention in docs/configuration-contract.md; no client
+# secret literal is ever created here.
+ensure_kv_cert_credential() {
+  local app_id="$1" cert_name="$2" policy_file public_cer cert_b64 has_key_cred
+
+  if ! az keyvault certificate show --vault-name "$KEY_VAULT_NAME" --name "$cert_name" >/dev/null 2>&1; then
+    log "Creating self-signed certificate $cert_name in Key Vault $KEY_VAULT_NAME"
+    policy_file="$(mktemp)"
+    az keyvault certificate get-default-policy > "$policy_file"
+    az keyvault certificate create \
+      --vault-name "$KEY_VAULT_NAME" \
+      --name "$cert_name" \
+      --policy "@$policy_file" >/dev/null
+    rm -f "$policy_file"
+  else
+    log "Reusing existing Key Vault certificate $cert_name"
+  fi
+
+  has_key_cred="$(az ad app show --id "$app_id" \
+    --query "length(keyCredentials)" -o tsv 2>/dev/null || echo 0)"
+  if [[ "${has_key_cred:-0}" != "0" ]]; then
+    log "Registration $app_id already has a certificate credential; skipping attach"
+    return 0
+  fi
+
+  log "Attaching public certificate $cert_name to registration $app_id"
+  public_cer="$(mktemp --suffix=.cer)"
+  # az keyvault certificate download refuses to overwrite an existing file.
+  rm -f "$public_cer"
+  az keyvault certificate download \
+    --vault-name "$KEY_VAULT_NAME" \
+    --name "$cert_name" \
+    --encoding DER \
+    --file "$public_cer" >/dev/null
+  cert_b64="$(base64 -w0 "$public_cer" 2>/dev/null || base64 "$public_cer" | tr -d '\n')"
+  az ad app credential reset \
+    --id "$app_id" \
+    --cert "$cert_b64" \
+    --append \
+    --years 1 >/dev/null
+  unset cert_b64
+  rm -f "$public_cer"
 }
 
 # -----------------------------------------------------------------------------
@@ -163,6 +232,62 @@ az rest --method PATCH \
   --body "{\"spa\":{\"redirectUris\":[$SPA_REDIRECT_JSON]},\"isFallbackPublicClient\":true}" >/dev/null
 
 # -----------------------------------------------------------------------------
+# 2b) Registration C (BFF, confidential web client) — look up or create
+#     A dedicated registration rather than a reuse of the SPA one: a registration
+#     carries a single front-channel logout URL, so sharing one across app
+#     origins leaves only one of them able to sign out cleanly.
+# -----------------------------------------------------------------------------
+BFF_ID="$(get_app_id_by_name "$BFF_DISPLAY_NAME")"
+if [[ -z "$BFF_ID" ]]; then
+  log "Creating BFF registration: $BFF_DISPLAY_NAME"
+  BFF_ID="$(az ad app create \
+    --display-name "$BFF_DISPLAY_NAME" \
+    --sign-in-audience AzureADMyOrg \
+    --query appId -o tsv)"
+else
+  log "Reusing existing BFF registration: $BFF_DISPLAY_NAME ($BFF_ID)"
+fi
+ensure_sp "$BFF_ID"
+BFF_OBJ="$(az ad app show --id "$BFF_ID" --query id -o tsv)"
+record_state bffAppId "$BFF_ID"
+
+# Authoritative shape for the confidential web client. PATCH replaces each named
+# collection outright, so a re-run converges rather than accumulating URIs.
+#   * web.redirectUris    - the two OIDC callbacks on the normal HTTPS hostname
+#   * web.logoutUrl       - front-channel logout endpoint
+#   * implicitGrantSettings - both issuance flags false; this client uses the
+#     authorization code flow and must never be handed tokens on the front channel
+#   * spa/publicClient redirectUris explicitly emptied so the registration cannot
+#     also be driven as a public client
+#   * isFallbackPublicClient false - a confidential client with a credential
+log "Configuring BFF web platform, logout URL, and implicit grant settings"
+az rest --method PATCH \
+  --uri "https://graph.microsoft.com/v1.0/applications/$BFF_OBJ" \
+  --headers "Content-Type=application/json" \
+  --body "{
+    \"signInAudience\": \"AzureADMyOrg\",
+    \"isFallbackPublicClient\": false,
+    \"web\": {
+      \"redirectUris\": [
+        \"$BFF_BASE_URI/signin-oidc\",
+        \"$BFF_BASE_URI/signout-callback-oidc\"
+      ],
+      \"logoutUrl\": \"$BFF_BASE_URI/signout-oidc\",
+      \"implicitGrantSettings\": {
+        \"enableAccessTokenIssuance\": false,
+        \"enableIdTokenIssuance\": false
+      }
+    },
+    \"spa\": { \"redirectUris\": [] },
+    \"publicClient\": { \"redirectUris\": [] }
+  }" >/dev/null
+
+# BFF confidential-client credential: Key Vault certificate, never an inline
+# secret. No managed identity federated credential is registered here; that
+# remains a later, separate credential choice.
+ensure_kv_cert_credential "$BFF_ID" "$BFF_CERT_NAME"
+
+# -----------------------------------------------------------------------------
 # 3) Expose access_as_user + knownClientApplications + preAuthorizedApplications
 #    (all on the API). PATCH is authoritative so re-runs converge.
 # -----------------------------------------------------------------------------
@@ -188,7 +313,8 @@ az rest --method PATCH \
           \"value\": \"access_as_user\"
         }
       ],
-      \"knownClientApplications\": [\"$SPA_ID\"]
+      \"knownClientApplications\": [\"$SPA_ID\"],
+      \"requestedAccessTokenVersion\": 2
     }
   }" >/dev/null
 
@@ -198,10 +324,37 @@ az rest --method PATCH \
   --body "{
     \"api\": {
       \"preAuthorizedApplications\": [
-        { \"appId\": \"$SPA_ID\", \"delegatedPermissionIds\": [\"$SCOPE_ID\"] }
+        { \"appId\": \"$SPA_ID\", \"delegatedPermissionIds\": [\"$SCOPE_ID\"] },
+        { \"appId\": \"$BFF_ID\", \"delegatedPermissionIds\": [\"$SCOPE_ID\"] }
       ]
     }
   }" >/dev/null
+
+# -----------------------------------------------------------------------------
+# 3b) Access token shape on the API (the RESOURCE), not on any client.
+#     Optional access token claims are a property of the registration that OWNS
+#     the audience, so they are configured here and nowhere else. The BFF client
+#     registration deliberately carries no optionalClaims.
+#       idtyp  - distinguishes a delegated token from an app-only token
+#       xms_cc - surfaces declared client capabilities (for example cp1/CAE)
+#     groupMembershipClaims is deliberately NOT written here. Group claims are
+#     retained for whatever authorization already depends on them; suppressing
+#     them to simplify a log query would change an authorization input.
+# -----------------------------------------------------------------------------
+log "Configuring optional access token claims on the API registration"
+az rest --method PATCH \
+  --uri "https://graph.microsoft.com/v1.0/applications/$API_OBJ" \
+  --headers "Content-Type=application/json" \
+  --body '{
+    "optionalClaims": {
+      "accessToken": [
+        { "name": "idtyp",  "source": null, "essential": false, "additionalProperties": [] },
+        { "name": "xms_cc", "source": null, "essential": false, "additionalProperties": [] }
+      ],
+      "idToken": [],
+      "saml2Token": []
+    }
+  }' >/dev/null
 
 # -----------------------------------------------------------------------------
 # 4) Certificate credential on the API — create/import in Key Vault, then attach
@@ -271,6 +424,21 @@ az ad app permission add \
 az ad app permission admin-consent --id "$SPA_ID" >/dev/null
 
 # -----------------------------------------------------------------------------
+# 6b) BFF -> API delegated permission (access_as_user) + admin consent.
+#     The owned API scope is the ONLY delegated permission granted to the BFF.
+#     It is deliberately given no Microsoft Graph permission: anything the BFF
+#     needs from Graph goes through the API, which already holds that grant.
+#     Runs after section 3 because the scope id must exist before it can be
+#     referenced as a delegated permission.
+# -----------------------------------------------------------------------------
+log "Adding BFF -> API access_as_user delegated permission + admin consent"
+az ad app permission add \
+  --id "$BFF_ID" \
+  --api "$API_ID" \
+  --api-permissions "$SCOPE_ID=Scope" >/dev/null 2>&1 || true
+az ad app permission admin-consent --id "$BFF_ID" >/dev/null
+
+# -----------------------------------------------------------------------------
 # 7) SPA -> Microsoft Graph User.Read (delegated) + admin consent (Tier 2).
 #    The SPA acquires a REAL Graph token so the Tier 2a server-side replay has a
 #    genuine downstream token to forward. This materializes as an
@@ -308,6 +476,7 @@ if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   {
     echo "api_client_id=$API_ID"
     echo "spa_client_id=$SPA_ID"
+    echo "bff_client_id=$BFF_ID"
     echo "api_scope=$API_SCOPE"
   } >> "$GITHUB_OUTPUT"
 fi
@@ -315,6 +484,7 @@ fi
 log "Provisioning complete."
 echo "api_client_id=$API_ID"
 echo "spa_client_id=$SPA_ID"
+echo "bff_client_id=$BFF_ID"
 echo "api_scope=$API_SCOPE"
 
 # -----------------------------------------------------------------------------
@@ -331,9 +501,10 @@ persist_repo_variables() {
   [[ -n "$target_repo" ]] && repo_args=(-R "$target_repo")
 
   if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-    log "Persisting repository variables via gh (API_CLIENT_ID, SPA_CLIENT_ID, API_SCOPE)"
+    log "Persisting repository variables via gh (API_CLIENT_ID, SPA_CLIENT_ID, BFF_CLIENT_ID, API_SCOPE)"
     gh variable set API_CLIENT_ID "${repo_args[@]}" --body "$API_ID" >/dev/null
     gh variable set SPA_CLIENT_ID "${repo_args[@]}" --body "$SPA_ID" >/dev/null
+    gh variable set BFF_CLIENT_ID "${repo_args[@]}" --body "$BFF_ID" >/dev/null
     gh variable set API_SCOPE "${repo_args[@]}" --body "$API_SCOPE" >/dev/null
     log "Repository variables set."
   else
@@ -341,6 +512,7 @@ persist_repo_variables() {
     log "To set them manually, run (after 'gh auth login'):"
     printf '    gh variable set API_CLIENT_ID --body %q\n' "$API_ID" >&2
     printf '    gh variable set SPA_CLIENT_ID --body %q\n' "$SPA_ID" >&2
+    printf '    gh variable set BFF_CLIENT_ID --body %q\n' "$BFF_ID" >&2
     printf '    gh variable set API_SCOPE --body %q\n' "$API_SCOPE" >&2
   fi
 }

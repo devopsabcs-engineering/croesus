@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'">
+  <title>Croesus BFF evidence</title>
+  <link rel="stylesheet" href="/evidence.css">
+</head>
+<body>
+  <main>
+    <h1>Croesus BFF evidence</h1>
+    <p>
+      This page reports only what the running application observed about its own session. It is not a tenant
+      log browser. No token, cookie value, authorization code, or protocol payload is available to it.
+    </p>
+    <p><button id="load" type="button">Load evidence</button></p>
+    <p id="status" role="status"></p>
+    <dl id="evidence"></dl>
+    <form id="logout" hidden>
+      <button type="submit">Sign out</button>
+    </form>
+  </main>
+  <script src="/evidence.js"></script>
+</body>
+</html>
