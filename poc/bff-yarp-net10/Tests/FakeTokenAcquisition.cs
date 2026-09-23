@@ -23,14 +23,20 @@ internal sealed class FakeTokenAcquisition : ITokenAcquisition
 
     public int CallCount { get; private set; }
 
+    /// <summary>The scheme the caller named on the most recent user-token request.</summary>
+    public string? LastAuthenticationScheme { get; private set; }
+
     public Task<string> GetAccessTokenForUserAsync(
         IEnumerable<string> scopes,
         string? authenticationScheme,
         string? tenantId = null,
         string? userFlow = null,
         ClaimsPrincipal? user = null,
-        TokenAcquisitionOptions? tokenAcquisitionOptions = null) =>
-        Task.FromResult(Produce(scopes).AccessToken);
+        TokenAcquisitionOptions? tokenAcquisitionOptions = null)
+    {
+        LastAuthenticationScheme = authenticationScheme;
+        return Task.FromResult(Produce(scopes).AccessToken);
+    }
 
     public Task<AuthenticationResult> GetAuthenticationResultForUserAsync(
         IEnumerable<string> scopes,
@@ -38,8 +44,11 @@ internal sealed class FakeTokenAcquisition : ITokenAcquisition
         string? tenantId = null,
         string? userFlow = null,
         ClaimsPrincipal? user = null,
-        TokenAcquisitionOptions? tokenAcquisitionOptions = null) =>
-        Task.FromResult(Produce(scopes));
+        TokenAcquisitionOptions? tokenAcquisitionOptions = null)
+    {
+        LastAuthenticationScheme = authenticationScheme;
+        return Task.FromResult(Produce(scopes));
+    }
 
     public Task<string> GetAccessTokenForAppAsync(
         string scope,

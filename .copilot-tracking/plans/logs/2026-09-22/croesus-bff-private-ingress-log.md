@@ -487,3 +487,29 @@ Decisions I made under delegated authority, where the user answered "you may if 
 * WI-35: lock the callback response mode with a regression test — assert the authorize request carries `response_mode=form_post` so a revert to query mode fails in CI rather than at interactive sign-in (medium)
   * Source: Phase 2, sign-in verification
   * Dependency: none
+
+### Implementation Deviations
+
+* DD-28: Token acquisition names the OpenID Connect scheme explicitly
+  * Plan specifies: acquire the downstream token from `ITokenAcquisition` for the signed-in user.
+  * Implementation differs: the call now passes `authenticationScheme: OpenIdConnectDefaults.AuthenticationScheme`.
+  * Rationale: the application default scheme is `Cookies` by design, so an unnamed scheme resolves Entra options that do not exist and throws IDW10503 at request time.
+
+* DD-29: The acquisition boundary catches every non-cancellation exception
+  * Plan specifies: fail closed on MSAL failures with a 502.
+  * Implementation differs: the final `catch` is widened from `MsalException` to any exception that is not `OperationCanceledException`.
+  * Rationale: the IDW10503 fault was an `InvalidOperationException`, which escaped the boundary and became a 500 carrying a stack trace. The file already claimed every check fails closed; this makes that true.
+
+## Suggested Follow-On Work
+
+* WI-36: Make `FakeTokenAcquisition` reject an unnamed scheme — {{high}}
+  * Source: `/api/profile` 500 diagnosis, 2026-09-23
+  * Dependency: none. The fake currently accepts any scheme, which is why 56 tests passed while production threw on every proxied call. A guard clause in the fake would turn this class of defect into a test failure rather than a runtime one.
+
+* WI-37: Assert protocol behaviour against a real identity provider in at least one test — {{medium}}
+  * Source: `/api/profile` 500 diagnosis, 2026-09-23
+  * Dependency: WI-36. Two production defects in a row (the IIS query-string 404 and IDW10503) were both invisible to a suite built entirely on synthetic doubles.
+
+* WI-38: Alert on server-side failures now that Application Insights is collecting — {{low}}
+  * Source: telemetry enablement, 2026-09-23
+  * Dependency: none. A failed-request or exception alert rule on `croesus-bff-poc-ai` would surface the next occurrence without a manual log read.

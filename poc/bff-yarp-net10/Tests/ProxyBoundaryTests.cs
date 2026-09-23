@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 
 namespace Croesus.BffYarp.Tests;
 
@@ -37,6 +38,25 @@ public sealed class ProxyBoundaryTests
         var response = await client.GetAsync("/api/resource");
 
         Assert.False(response.Headers.Contains("Set-Cookie"));
+    }
+
+    /// <summary>
+    /// The default scheme is Cookies, but the Entra options token acquisition needs are registered under the
+    /// OpenID Connect scheme. Leaving the scheme unnamed resolves Cookies, finds no Instance, and throws
+    /// IDW10503 at request time rather than at build time, so only an explicit assertion catches it.
+    /// </summary>
+    [Fact]
+    public async Task TokenAcquisition_IsAskedForTheOpenIdConnectScheme()
+    {
+        using var factory = new BffFactory();
+        var client = await SessionHelpers.SignedInClientAsync(factory);
+
+        var response = await client.GetAsync("/api/resource");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(
+            OpenIdConnectDefaults.AuthenticationScheme,
+            factory.TokenAcquisition.LastAuthenticationScheme);
     }
 
     [Fact]

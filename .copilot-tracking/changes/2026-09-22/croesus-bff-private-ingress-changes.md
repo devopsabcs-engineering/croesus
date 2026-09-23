@@ -757,3 +757,51 @@ Interactive sign-in returned an IIS 404 at `/signin-oidc` with an authorization 
 The 2048-byte boundary is the IIS request filtering `maxQueryString` default, returning HTTP 404.15 before the request reaches the application. Adding the `api://` downstream scope lengthened the authorization code past that boundary, so the failure appeared only after the owned API was wired in.
 
 After deployment the authorize request carries `response_mode=form_post`, and a 4000-byte code posted to `/signin-oidc` reaches the application and is rejected on its merits with 400 `{"error":"authentication_failed"}` rather than by IIS. BFF suite: 56 passed, 0 failed.
+
+## Downstream Token Acquisition Scheme and Telemetry: 2026-09-23
+
+### Symptom
+
+`GET /api/profile` on the BFF returned HTTP 500 for a signed-in session. Sign-in itself succeeded and the evidence page rendered, so the failure was isolated to the proxied hop.
+
+### Root Cause
+
+The application event log carried the unhandled exception:
+
+```text
+System.InvalidOperationException: IDW10503: Cannot determine the cloud Instance.
+The provided authentication scheme was ''. Microsoft.Identity.Web inferred 'Cookies'
+as the authentication scheme. Available authentication schemes are 'Cookies,OpenIdConnect'.
+   at Microsoft.Identity.Web.TokenAcquisitionAspnetCoreHost.GetOptions(...)
+   at Croesus.BffYarp.Security.ProxyBoundaryMiddleware.TryAcquireTokenAsync(...)
+```
+
+`ProxyBoundaryMiddleware` called `GetAuthenticationResultForUserAsync` without naming an authentication scheme. Microsoft.Identity.Web then resolves the application default scheme, which this application deliberately sets to `Cookies` so an unauthenticated `/api` call receives a bounded JSON response instead of an identity-provider redirect. The Entra options the call needs are registered under the `OpenIdConnect` scheme, so the lookup found no `Instance` and threw.
+
+The defect was invisible to the test suite because `FakeTokenAcquisition` accepted any scheme and ignored it.
+
+### Changes
+
+* `poc/bff-yarp-net10/Security/ProxyBoundaryMiddleware.cs` — names `OpenIdConnectDefaults.AuthenticationScheme` on the acquisition call, and widens the final `catch` from `MsalException` to any non-cancellation exception so an acquisition fault becomes a bounded 502 rather than an unbounded 500 carrying a stack trace.
+* `poc/bff-yarp-net10/Tests/FakeTokenAcquisition.cs` — records `LastAuthenticationScheme` for the user-token calls.
+* `poc/bff-yarp-net10/Tests/ProxyBoundaryTests.cs` — adds `TokenAcquisition_IsAskedForTheOpenIdConnectScheme`, which fails if the scheme is ever left unnamed again.
+
+### Telemetry
+
+Application Insights was absent from the deployment, which is why the first diagnosis attempt had to read `eventlog.xml` over Kudu. Added:
+
+* `croesus-bff-poc-law` — Log Analytics workspace, Canada East.
+* `croesus-bff-poc-ai` — workspace-based Application Insights component, local auth left enabled so connection-string ingestion succeeds.
+* `APPLICATIONINSIGHTS_CONNECTION_STRING`, `ApplicationInsightsAgent_EXTENSION_VERSION=~3`, and `XDT_MicrosoftApplicationInsights_Mode=recommended` on all four sites (`bff`, `api`, `modern`, `legacy`).
+* Filesystem application logging, detailed error messages, and failed request tracing on all four sites.
+
+Ingestion confirmed for all four roles across `AppRequests` and `AppTraces`. Because the component is workspace-based, query the workspace directly; `az monitor app-insights query` returns no rows for this configuration.
+
+### Verification
+
+| Check | Result |
+|-------|--------|
+| BFF test suite | 57 passed, 0 failed |
+| BFF root after redeploy | 200 |
+| Owned API called directly without a token | 401 |
+| Telemetry rows for all four roles | present |

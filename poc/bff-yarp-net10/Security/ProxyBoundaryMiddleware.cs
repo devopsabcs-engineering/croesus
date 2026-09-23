@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.Identity.Client;
 using Microsoft.Identity.Web;
 
@@ -92,8 +93,11 @@ internal sealed class ProxyBoundaryMiddleware(RequestDelegate next, ProxyDestina
         var resource = ReadResource(settings.DownstreamScopes[0]);
         try
         {
+            // The scheme is named because the default scheme here is Cookies, and the Entra options this
+            // call needs are registered under the OpenID Connect scheme rather than the default one.
             var result = await tokenAcquisition.GetAuthenticationResultForUserAsync(
                 settings.DownstreamScopes,
+                authenticationScheme: OpenIdConnectDefaults.AuthenticationScheme,
                 user: context.User);
 
             context.Items[AccessTokenTransform.TokenItemKey] = result.AccessToken;
@@ -113,11 +117,15 @@ internal sealed class ProxyBoundaryMiddleware(RequestDelegate next, ProxyDestina
             await ClaimsChallengeHandler.WriteInteractionRequiredAsync(context, challengeId: null);
             return false;
         }
-        catch (MsalException exception)
+        // Every remaining failure, not only the MSAL ones, ends here. An acquisition fault that escaped this
+        // method would surface as an unbounded 500 with a stack trace, which is neither a bounded response nor
+        // a safe one to hand a browser.
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
             // Never fall back to a browser-supplied token or another cache entry; refuse the hop instead.
             evidence.RecordAcquisition(context.User, resource, [], "none", null, "failed");
             logger.LogError(
+                exception,
                 "Token acquisition failed ({ExceptionType}); the request was not forwarded.",
                 exception.GetType().Name);
             await WriteProblemAsync(context, StatusCodes.Status502BadGateway, "downstream_token_unavailable");
