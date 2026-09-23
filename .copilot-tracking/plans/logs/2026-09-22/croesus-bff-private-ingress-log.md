@@ -411,3 +411,28 @@ Decisions I made under delegated authority, where the user answered "you may if 
   * Rationale: user elected to expand beyond the plan default of `deployBffSite = false`. The site provisions correctly; the application cannot start for reasons recorded as WI-25.
 * ID-06: How to supply the expired client secret — Option "Rotate the secret, then deploy" selected
   * Rationale: the deployed credential had been expired for six weeks. Rotated with `--append` so the prior credential was not invalidated, and the value was never displayed or routed through the assistant.
+
+## Evidence Findings: 2026-09-23
+
+### Unaddressed Research Items
+
+* DR-04: token protection status is absent from the Graph v1.0 sign-in log schema
+  * Source: observed live on 2026-09-23 against this tenant
+  * Reason: `auditLogs/signIns` on `v1.0` returns `tokenProtectionStatusDetails` as null. The same rows on `beta` return `signInSessionStatus` and `signInSessionStatusCode`. Any evidence capture that reads binding status from v1.0 silently records nothing and would be misread as "no binding problem observed".
+  * Impact: high for evidence capture; the API version is load-bearing and is not stated in `scripts/evidence-kql.kusto` or the workflow
+
+### Implementation Deviations
+
+* DD-24: the Unbound diagnostic was treated as a Croesus-specific observation pending explanation
+  * Plan specifies: preserve the unresolved customer finding until grant and policy evidence is obtained
+  * Implementation differs: the finding is now partly explained by measurement. Over 200 recent sign-in rows in this tenant, `unbound` appears 24 times, including one `1008`, on applications unrelated to this POC, with no BFF present. `bound/0` occurs 149 times and every one of those rows carries `incomingTokenType=primaryRefreshToken`.
+  * Rationale: binding status tracks whether the client presented a primary refresh token. That is a property of the client device and its broker, not of server-side token custody, so a BFF cannot convert an unbound sign-in into a bound one. This strengthens rather than weakens the research position in Scenario 4: Unbound is a routine binding diagnostic, observable in ordinary traffic, and is not evidence of replay.
+
+## Suggested Follow-On Work
+
+* WI-29: State the required Graph API version for token protection status in `scripts/evidence-kql.kusto` and in any sign-in log capture step, and add a guard that treats a null `tokenProtectionStatusDetails` as not-executed rather than as an absence of findings (high)
+  * Source: 2026-09-23 evidence review
+  * Dependency: none
+* WI-30: Add the tenant baseline measurement to `docs/evidence-narrative.md` so the customer conversation can cite an observed unbound rate in traffic unrelated to the escalation rather than reasoning about it (medium)
+  * Source: 2026-09-23 evidence review
+  * Dependency: agreement on how much tenant-shaped data may be shared
