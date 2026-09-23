@@ -389,12 +389,14 @@ Decisions I made under delegated authority, where the user answered "you may if 
   * Source: observed live on 2026-09-23 from the ANCM stdout capture
   * Reason: the application validates `DownstreamApi:Scopes` at startup and fails closed, but no artifact defines what that scope should be, the registration exposes no API, and no proxy destinations exist
   * Impact: high for any attempt to host the BFF; none for the two-app comparison the POC actually demonstrates
+  * Status: resolved 2026-09-23. The contract is now defined in three places that agree: `scripts/provision-owned-api-registration.ps1` converges the registration that exposes the scope, `infra/poc/main.bicep` supplies the scope, the permitted origin and the proxy destination as app settings, and `poc/owned-api-net10` is the destination those settings point at. The BFF starts.
 
 ## Suggested Follow-On Work
 
 * WI-25: Define the BFF configuration contract — expose an Application ID URI and delegated scope on the registration, decide the proxy destination set, and add the corresponding app settings to `main.bicep` (high)
   * Source: 2026-09-23 deployment
   * Dependency: a decision on what the BFF is meant to front, which Step 1.4 returned as out-of-scope and Step 3.7 left blocked
+  * Status: implemented 2026-09-23. The dependency was resolved by ID-07. A second registration, `croesus-bff-a3v24wppuvd34-api`, exposes `api://<api-client-id>/access_as_user` and pre-authorizes the web registration so no consent prompt stands between the BFF and its downstream. A new site, `croesus-bff-a3v24wppuvd34-api`, runs `poc/owned-api-net10`, which validates bearer tokens only. The BFF received `DownstreamApi__Scopes__0`, `ProxyPolicy__AllowedDestinationOrigins__0` and `ReverseProxy__Clusters__owned-api__Destinations__primary__Address`. Verified live: the App Service event log reports `Application 'C:\home\site\wwwroot\' started successfully`, `/` returns HTTP 200, and an unauthenticated `/api/profile` returns the bounded `interaction_required` JSON rather than an identity provider redirect.
 * WI-26: Pin `RuntimeIdentifier` to `win-x64` in the publish path for both .NET 10 projects, or set it in CI, so an ARM64 developer machine cannot produce an unloadable package (medium)
   * Source: 2026-09-23 deployment
   * Dependency: none
@@ -441,3 +443,35 @@ Decisions I made under delegated authority, where the user answered "you may if 
 * WI-31: Reproduce the tenant baseline as a repeatable capture rather than a transcribed sample (low)
   * Source: 2026-09-23 WI-30 implementation
   * Dependency: none. Query 5 exists; the percentages in `docs/evidence-narrative.md` are currently hand-carried from a single Graph beta sample and will drift from the workspace result.
+
+## Owned API and BFF Downstream: 2026-09-23
+
+### User Decisions
+
+* ID-07: What the reference BFF proxies to — a separate API registration and a purpose-built minimal API
+  * Rationale: user selected Option A and asked for the fuller, more realistic variant. Two sub-decisions followed from that. First, the scope lives on its own registration rather than on the shared web registration, because the audience boundary this escalation is about only exists when the resource and the client are different applications; a single registration acting as both would remove the thing being demonstrated. Second, the downstream is a new `poc/owned-api-net10` rather than the existing `api/Croesus.Api`, which requires Microsoft Graph on-behalf-of, a Key Vault certificate credential, Application Insights and CORS configuration, and whose primary endpoint fails without the Graph leg. Neither of those belongs in a proof about token custody.
+
+### Implementation Deviations
+
+* DD-25: Graph rejects a single PATCH that adds a delegated scope and pre-authorizes a client for it
+  * Plan specifies: converge `api.oauth2PermissionScopes` and `api.preAuthorizedApplications` together
+  * Implementation differs: `provision-owned-api-registration.ps1` writes them in two sequential PATCH requests
+  * Rationale: observed live. Graph resolves `delegatedPermissionIds` against the scopes already stored on the application, so the combined request fails with `InvalidValue` naming a permission id present in the same body. The script now writes the scope, then the pre-authorization.
+
+* DD-26: `requestedAccessTokenVersion` is set to 2 rather than left at the directory default
+  * Plan specifies: nothing; the token version was not considered
+  * Implementation differs: the API registration requests v2 access tokens, and the provisioning script fails preflight if it is anything else
+  * Rationale: Microsoft.Identity.Web builds a v2.0 authority from `Instance` and `TenantId`. A v1 access token carries the `sts.windows.net` issuer, which fails issuer validation against that metadata. Left unset, the first proxied call would fail authentication for a reason that does not name its cause.
+
+### Suggested Follow-On Work
+
+* WI-32: Perform an interactive delegated sign-in through the BFF and capture the proxied call (high)
+  * Source: 2026-09-23 owned API deployment
+  * Dependency: a human sign-in. Everything up to the redirect is verified; the token acquisition, the audience on the token the API receives, and the claim that no cookie crosses the boundary are all asserted by tests and by design, not yet by a live delegated call. `GET /api/profile` through the BFF returns the audience, the calling application id and a `receivedCookie` observation, so one sign-in produces the evidence.
+* WI-33: Persist the Data Protection key ring for the BFF (medium)
+  * Source: 2026-09-23 App Service event log, `No XML encryptor configured`
+  * Dependency: none. `DataProtection:KeyRingPath` is empty, so keys live in memory and every restart invalidates existing session cookies. Tolerable for a single-instance demonstration, but a scale-out or a restart mid-demonstration signs everyone out.
+* WI-34: Publish the owned API from CI rather than from a developer machine (medium)
+  * Source: 2026-09-23 owned API deployment
+  * Dependency: none. `.github/workflows/classic-net-bff-poc.yml` builds and publishes only the legacy and modern apps. Neither the BFF nor the owned API is in the publish step, so both currently reach App Service by hand.
+
