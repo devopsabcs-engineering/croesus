@@ -733,3 +733,27 @@ Standing the BFF up demonstrates token custody. It does not answer the Croesus q
   * Pre-authorization is a home-tenant relationship and the POC deploys `SingleTenant`. A multi-tenant resource would need consent handling that this proof does not exercise
 * The BFF and the owned API were published from a developer machine
   * Neither is in the CI publish step, which covers only the legacy and modern apps. Raised as WI-34
+
+## Sign-In Callback Response Mode: 2026-09-23
+
+### Modified
+
+* poc/bff-yarp-net10/Program.cs - switch the OpenID Connect response mode from query to form post so the authorization code arrives in the request body
+* poc/bff-yarp-net10/Tests/ProtocolNegativeTests.cs - drive the callback as a form post through a shared `PostCallbackAsync` helper across all seven callback cases
+
+### Removed
+
+* poc/bff-yarp-net10/Tests/DiagnosticTests.cs - scratch probe of the callback path, untracked, superseded by live verification
+
+### Verification
+
+Interactive sign-in returned an IIS 404 at `/signin-oidc` with an authorization code in the query string. Bisecting the query string length against the live site isolated the cause:
+
+| Query string bytes | Result |
+|--------------------|--------------------------------|
+| 2000 | 400 `{"error":"authentication_failed"}` |
+| 2100 | 404, 103-byte IIS body |
+
+The 2048-byte boundary is the IIS request filtering `maxQueryString` default, returning HTTP 404.15 before the request reaches the application. Adding the `api://` downstream scope lengthened the authorization code past that boundary, so the failure appeared only after the owned API was wired in.
+
+After deployment the authorize request carries `response_mode=form_post`, and a 4000-byte code posted to `/signin-oidc` reaches the application and is rejected on its merits with 400 `{"error":"authentication_failed"}` rather than by IIS. BFF suite: 56 passed, 0 failed.

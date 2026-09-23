@@ -475,3 +475,15 @@ Decisions I made under delegated authority, where the user answered "you may if 
   * Source: 2026-09-23 owned API deployment
   * Dependency: none. `.github/workflows/classic-net-bff-poc.yml` builds and publishes only the legacy and modern apps. Neither the BFF nor the owned API is in the publish step, so both currently reach App Service by hand.
 
+### Implementation Deviations
+
+* DD-27: the sign-in callback uses form post, not query
+  * Plan specifies: the BFF configured `ResponseMode = Query`, placing the authorization code in the callback URL
+  * Implementation differs: `ResponseMode = FormPost`, placing the code in the request body
+  * Rationale: IIS request filtering rejects a query string beyond 2048 bytes with HTTP 404.15 before the request reaches the application. The authorization code crossed that boundary once the `api://` downstream scope was added, so interactive sign-in failed with a bare IIS 404. Form post is also the OpenID Connect recommendation for code flow and keeps the code out of the URL, browser history and proxy logs.
+
+## Suggested Follow-On Work
+
+* WI-35: lock the callback response mode with a regression test — assert the authorize request carries `response_mode=form_post` so a revert to query mode fails in CI rather than at interactive sign-in (medium)
+  * Source: Phase 2, sign-in verification
+  * Dependency: none
