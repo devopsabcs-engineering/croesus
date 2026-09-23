@@ -130,7 +130,7 @@ public sealed class ProtocolNegativeTests
         var challenge = await StartSignInAsync(client);
         factory.IdTokenNonce = challenge.Nonce;
 
-        var response = await client.GetAsync($"/signin-oidc?code=synthetic-code&state={Uri.EscapeDataString(challenge.State)}");
+        var response = await PostCallbackAsync(client, challenge.State);
 
         Assert.Equal(HttpStatusCode.Found, response.StatusCode);
         Assert.Equal(1, factory.TokenEndpointCalls);
@@ -146,7 +146,7 @@ public sealed class ProtocolNegativeTests
         var client = factory.CreateSecureClient();
         await StartSignInAsync(client);
 
-        var response = await client.GetAsync("/signin-oidc?code=synthetic-code&state=a-state-this-application-never-issued");
+        var response = await PostCallbackAsync(client, "a-state-this-application-never-issued");
 
         await AssertRejectedAsync(response);
         Assert.Contains("State", factory.LastRemoteFailure?.Message ?? string.Empty, StringComparison.Ordinal);
@@ -160,7 +160,7 @@ public sealed class ProtocolNegativeTests
         var client = factory.CreateSecureClient();
         await StartSignInAsync(client);
 
-        var response = await client.GetAsync("/signin-oidc?code=synthetic-code");
+        var response = await PostCallbackAsync(client, state: null);
 
         await AssertRejectedAsync(response);
         Assert.Contains("message.State is null or empty", factory.LastRemoteFailure?.Message ?? string.Empty, StringComparison.Ordinal);
@@ -177,8 +177,7 @@ public sealed class ProtocolNegativeTests
 
         // A caller that replays a captured state value from a different browser has no correlation cookie.
         using var freshClient = factory.CreateSecureClient();
-        var response = await freshClient.GetAsync(
-            $"/signin-oidc?code=synthetic-code&state={Uri.EscapeDataString(challenge.State)}");
+        var response = await PostCallbackAsync(freshClient, challenge.State);
 
         await AssertRejectedAsync(response);
         Assert.Contains("Correlation failed", factory.LastRemoteFailure?.Message ?? string.Empty, StringComparison.Ordinal);
@@ -193,8 +192,7 @@ public sealed class ProtocolNegativeTests
         var challenge = await StartSignInAsync(client);
         factory.IdTokenNonce = "a-nonce-this-application-never-issued";
 
-        var response = await client.GetAsync(
-            $"/signin-oidc?code=synthetic-code&state={Uri.EscapeDataString(challenge.State)}");
+        var response = await PostCallbackAsync(client, challenge.State);
 
         await AssertRejectedAsync(response);
         AssertFailedBecauseOfNonce(factory);
@@ -212,8 +210,7 @@ public sealed class ProtocolNegativeTests
         var challenge = await StartSignInAsync(client);
         factory.IdTokenNonce = null;
 
-        var response = await client.GetAsync(
-            $"/signin-oidc?code=synthetic-code&state={Uri.EscapeDataString(challenge.State)}");
+        var response = await PostCallbackAsync(client, challenge.State);
 
         await AssertRejectedAsync(response);
         AssertFailedBecauseOfNonce(factory);
@@ -226,10 +223,9 @@ public sealed class ProtocolNegativeTests
         var client = factory.CreateSecureClient();
         var challenge = await StartSignInAsync(client);
         factory.IdTokenNonce = challenge.Nonce;
-        var callback = $"/signin-oidc?code=synthetic-code&state={Uri.EscapeDataString(challenge.State)}";
 
-        var first = await client.GetAsync(callback);
-        var replay = await client.GetAsync(callback);
+        var first = await PostCallbackAsync(client, challenge.State);
+        var replay = await PostCallbackAsync(client, challenge.State);
 
         Assert.Equal(HttpStatusCode.Found, first.StatusCode);
         await AssertRejectedAsync(replay);
@@ -273,6 +269,18 @@ public sealed class ProtocolNegativeTests
         Assert.False(string.IsNullOrEmpty(state));
         Assert.False(string.IsNullOrEmpty(nonce));
         return (state, nonce);
+    }
+
+    /// <summary>Delivers the callback the way the identity provider does, as a form post.</summary>
+    private static Task<HttpResponseMessage> PostCallbackAsync(HttpClient client, string? state)
+    {
+        var fields = new List<KeyValuePair<string, string>> { new("code", "synthetic-code") };
+        if (state is not null)
+        {
+            fields.Add(new("state", state));
+        }
+
+        return client.PostAsync("/signin-oidc", new FormUrlEncodedContent(fields));
     }
 
     private static async Task AssertRejectedAsync(HttpResponseMessage response)

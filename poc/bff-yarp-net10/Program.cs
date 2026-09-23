@@ -138,7 +138,9 @@ builder.Services
     .PostConfigure<TenantPolicy>((options, tenantPolicy) =>
     {
         options.ResponseType = OpenIdConnectResponseType.Code;
-        options.ResponseMode = OpenIdConnectResponseMode.Query;
+        // An authorization code carrying downstream API scopes exceeds the 2048-byte IIS query string limit,
+        // so the code arrives in the request body instead of the URL, browser history and proxy logs.
+        options.ResponseMode = OpenIdConnectResponseMode.FormPost;
         options.UsePkce = true;
         // Tokens live in the server-side token cache. Saving them here would put them in the browser-held ticket.
         options.SaveTokens = false;
