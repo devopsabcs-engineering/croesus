@@ -22,3 +22,17 @@ param appServicePlanSkuName = 'B1'
 // through this host additionally requires https://<bffHostName>/signin-oidc on the registration's redirect
 // URI list, because main.bicep points the BFF at the same clientId as the legacy and modern sites.
 param deployBffSite = true
+
+// The BFF fails closed when it has no downstream: BffAuthenticationSettings rejects an empty
+// DownstreamApi:Scopes, and ProxyDestinationPolicy rejects a route with no permitted destination. Hosting
+// the reference BFF therefore requires an owned API to proxy to, which is what this site provides.
+// Its registration is separate from the web registration on purpose. The question this proof-of-concept
+// exists to answer is about the audience boundary, and that boundary only exists when the resource and
+// the client are two different applications. Converge it with:
+//   ./scripts/provision-owned-api-registration.ps1 \
+//     -DisplayName croesus-bff-a3v24wppuvd34-api \
+//     -ClientAppId <the clientId above>
+// and pass the clientId it reports as CROESUS_OWNED_API_CLIENT_ID.
+param deployOwnedApiSite = true
+param ownedApiClientId = readEnvironmentVariable('CROESUS_OWNED_API_CLIENT_ID', '00000000-0000-0000-0000-000000000000')
+param ownedApiScopeName = 'access_as_user'

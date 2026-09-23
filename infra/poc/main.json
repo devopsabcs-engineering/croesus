@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.47.16.16243",
-      "templateHash": "5151964940621306975"
+      "templateHash": "12965502881081148732"
     }
   },
   "parameters": {
@@ -67,16 +67,90 @@
       "metadata": {
         "description": "Short-lived client secret for the shared confidential web registration."
       }
+    },
+    "ingressMode": {
+      "type": "string",
+      "defaultValue": "Public",
+      "allowedValues": [
+        "Public",
+        "Private"
+      ],
+      "metadata": {
+        "description": "Ingress posture applied to every site in this deployment."
+      }
+    },
+    "appServicePlanSkuName": {
+      "type": "string",
+      "defaultValue": "B1",
+      "allowedValues": [
+        "F1",
+        "D1",
+        "B1",
+        "B2",
+        "B3",
+        "S1",
+        "S2",
+        "S3",
+        "P0v3",
+        "P1v3",
+        "P2v3",
+        "P3v3"
+      ],
+      "metadata": {
+        "description": "App Service plan SKU name. Private ingress requires B1 or better."
+      }
+    },
+    "deployBffSite": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Provision the reference BFF site. Off until the application in poc/bff-yarp-net10 is ready to publish."
+      }
+    },
+    "deployOwnedApiSite": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Deploys the owned API the reference BFF proxies to. The BFF fails closed without a downstream, so this is effectively required whenever deployBffSite is true."
+      }
+    },
+    "ownedApiClientId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Application (client) ID of the API registration that exposes the delegated scope. Distinct from clientId: the audience boundary only exists when the resource and the client are two different applications."
+      }
+    },
+    "ownedApiScopeName": {
+      "type": "string",
+      "defaultValue": "access_as_user",
+      "metadata": {
+        "description": "Name of the delegated scope the API registration exposes and the BFF requests."
+      }
+    },
+    "privateEndpointSubnetId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Resource ID of the subnet hosting the private endpoints. Required only when ingressMode is Private."
+      }
+    },
+    "privateDnsZoneId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Resource ID of the privatelink.azurewebsites.net private DNS zone. Required only when ingressMode is Private."
+      }
     }
   },
   "variables": {
     "copy": [
       {
-        "name": "modernAllowedTenantSettings",
+        "name": "allowedTenantAppSettings",
         "count": "[length(variables('effectiveAllowedTenantIds'))]",
         "input": {
-          "name": "[format('Authentication__AllowedTenantIds__{0}', copyIndex('modernAllowedTenantSettings'))]",
-          "value": "[variables('effectiveAllowedTenantIds')[copyIndex('modernAllowedTenantSettings')]]"
+          "name": "[format('Authentication__AllowedTenantIds__{0}', copyIndex('allowedTenantAppSettings'))]",
+          "value": "[variables('effectiveAllowedTenantIds')[copyIndex('allowedTenantAppSettings')]]"
         }
       }
     ],
@@ -84,14 +158,46 @@
     "appServicePlanName": "[format('croesus-bff-{0}-plan', variables('uniqueSuffix'))]",
     "legacyAppName": "[format('croesus-bff-{0}-legacy', variables('uniqueSuffix'))]",
     "modernAppName": "[format('croesus-bff-{0}-modern', variables('uniqueSuffix'))]",
+    "bffAppName": "[format('croesus-bff-{0}-bff', variables('uniqueSuffix'))]",
+    "ownedApiAppName": "[format('croesus-bff-{0}-api', variables('uniqueSuffix'))]",
     "legacyHostName": "[format('{0}.azurewebsites.net', variables('legacyAppName'))]",
     "modernHostName": "[format('{0}.azurewebsites.net', variables('modernAppName'))]",
+    "bffHostName": "[format('{0}.azurewebsites.net', variables('bffAppName'))]",
+    "ownedApiHostName": "[format('{0}.azurewebsites.net', variables('ownedApiAppName'))]",
     "legacyBaseUrl": "[format('https://{0}', variables('legacyHostName'))]",
     "modernBaseUrl": "[format('https://{0}', variables('modernHostName'))]",
+    "bffBaseUrl": "[format('https://{0}', variables('bffHostName'))]",
+    "ownedApiBaseUrl": "[format('https://{0}', variables('ownedApiHostName'))]",
     "legacyCallbackUri": "[format('{0}/signin-oidc', variables('legacyBaseUrl'))]",
     "modernCallbackUri": "[format('{0}/signin-oidc', variables('modernBaseUrl'))]",
+    "bffCallbackUri": "[format('{0}/signin-oidc', variables('bffBaseUrl'))]",
+    "publicNetworkAccess": "[if(equals(parameters('ingressMode'), 'Public'), 'Enabled', 'Disabled')]",
+    "deployPrivateEndpoints": "[equals(parameters('ingressMode'), 'Private')]",
+    "appServicePlanSkuTiers": {
+      "F1": "Free",
+      "D1": "Shared",
+      "B1": "Basic",
+      "B2": "Basic",
+      "B3": "Basic",
+      "S1": "Standard",
+      "S2": "Standard",
+      "S3": "Standard",
+      "P0v3": "PremiumV3",
+      "P1v3": "PremiumV3",
+      "P2v3": "PremiumV3",
+      "P3v3": "PremiumV3"
+    },
+    "appServicePlanSkuTier": "[variables('appServicePlanSkuTiers')[parameters('appServicePlanSkuName')]]",
+    "isFreeOrSharedTier": "[contains(createArray('F1', 'D1'), parameters('appServicePlanSkuName'))]",
+    "alwaysOn": "[not(variables('isFreeOrSharedTier'))]",
+    "ingressTierGuardOutcomes": {
+      "supported": "[format('Supported: {0} ingress on {1}.', parameters('ingressMode'), parameters('appServicePlanSkuName'))]"
+    },
+    "ingressTierGuard": "[if(and(variables('deployPrivateEndpoints'), variables('isFreeOrSharedTier')), variables('ingressTierGuardOutcomes')['ingressMode Private requires an App Service plan at B1 or better. F1 Free and D1 Shared cannot host a private endpoint.'], variables('ingressTierGuardOutcomes').supported)]",
     "effectiveAllowedTenantIds": "[if(equals(parameters('authenticationMode'), 'SingleTenant'), createArray(parameters('tenantId')), union(createArray(parameters('tenantId')), parameters('allowedTenantIds')))]",
-    "authorityTenant": "[if(equals(parameters('authenticationMode'), 'Organizations'), 'organizations', parameters('tenantId'))]"
+    "authorityTenant": "[if(equals(parameters('authenticationMode'), 'Organizations'), 'organizations', parameters('tenantId'))]",
+    "ownedApiDelegatedScope": "[format('api://{0}/{1}', parameters('ownedApiClientId'), parameters('ownedApiScopeName'))]",
+    "bffDownstreamAppSettings": "[if(parameters('deployOwnedApiSite'), createArray(createObject('name', 'DownstreamApi__Scopes__0', 'value', variables('ownedApiDelegatedScope')), createObject('name', 'ProxyPolicy__AllowedDestinationOrigins__0', 'value', variables('ownedApiBaseUrl')), createObject('name', 'ReverseProxy__Clusters__owned-api__Destinations__primary__Address', 'value', format('{0}/', variables('ownedApiBaseUrl')))), createArray())]"
   },
   "resources": {
     "appServicePlan": {
@@ -101,8 +207,8 @@
       "location": "[parameters('location')]",
       "kind": "app",
       "sku": {
-        "name": "B1",
-        "tier": "Basic",
+        "name": "[parameters('appServicePlanSkuName')]",
+        "tier": "[variables('appServicePlanSkuTier')]",
         "capacity": 1
       },
       "properties": {
@@ -118,8 +224,9 @@
       "properties": {
         "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
         "httpsOnly": true,
+        "publicNetworkAccess": "[variables('publicNetworkAccess')]",
         "siteConfig": {
-          "alwaysOn": true,
+          "alwaysOn": "[variables('alwaysOn')]",
           "ftpsState": "Disabled",
           "minTlsVersion": "1.2",
           "netFrameworkVersion": "v4.0",
@@ -172,17 +279,499 @@
       "properties": {
         "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
         "httpsOnly": true,
+        "publicNetworkAccess": "[variables('publicNetworkAccess')]",
         "siteConfig": {
-          "alwaysOn": true,
+          "alwaysOn": "[variables('alwaysOn')]",
           "appCommandLine": "Croesus.ModernBff.exe",
           "ftpsState": "Disabled",
           "minTlsVersion": "1.2",
+          "netFrameworkVersion": "v10.0",
           "use32BitWorkerProcess": false,
-          "appSettings": "[concat(createArray(createObject('name', 'ASPNETCORE_ENVIRONMENT', 'value', 'Poc'), createObject('name', 'AzureAd__Instance', 'value', environment().authentication.loginEndpoint), createObject('name', 'AzureAd__TenantId', 'value', variables('authorityTenant')), createObject('name', 'AzureAd__ClientId', 'value', parameters('clientId')), createObject('name', 'AzureAd__ClientSecret', 'value', parameters('clientSecret')), createObject('name', 'AzureAd__CallbackPath', 'value', '/signin-oidc'), createObject('name', 'Authentication__Mode', 'value', parameters('authenticationMode')), createObject('name', 'AllowedHosts', 'value', variables('modernHostName'))), variables('modernAllowedTenantSettings'))]"
+          "appSettings": "[concat(createArray(createObject('name', 'ASPNETCORE_ENVIRONMENT', 'value', 'Poc'), createObject('name', 'AzureAd__Instance', 'value', environment().authentication.loginEndpoint), createObject('name', 'AzureAd__TenantId', 'value', variables('authorityTenant')), createObject('name', 'AzureAd__ClientId', 'value', parameters('clientId')), createObject('name', 'AzureAd__ClientSecret', 'value', parameters('clientSecret')), createObject('name', 'AzureAd__CallbackPath', 'value', '/signin-oidc'), createObject('name', 'Authentication__Mode', 'value', parameters('authenticationMode')), createObject('name', 'AllowedHosts', 'value', variables('modernHostName'))), variables('allowedTenantAppSettings'))]"
         }
       },
       "dependsOn": [
         "appServicePlan"
+      ]
+    },
+    "bffApp": {
+      "condition": "[parameters('deployBffSite')]",
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2025-03-01",
+      "name": "[variables('bffAppName')]",
+      "location": "[parameters('location')]",
+      "kind": "app",
+      "properties": {
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
+        "httpsOnly": true,
+        "publicNetworkAccess": "[variables('publicNetworkAccess')]",
+        "siteConfig": {
+          "alwaysOn": "[variables('alwaysOn')]",
+          "appCommandLine": "Croesus.BffYarp.exe",
+          "ftpsState": "Disabled",
+          "minTlsVersion": "1.2",
+          "netFrameworkVersion": "v10.0",
+          "use32BitWorkerProcess": false,
+          "appSettings": "[concat(createArray(createObject('name', 'ASPNETCORE_ENVIRONMENT', 'value', 'Poc'), createObject('name', 'AzureAd__Instance', 'value', environment().authentication.loginEndpoint), createObject('name', 'AzureAd__TenantId', 'value', variables('authorityTenant')), createObject('name', 'AzureAd__ClientId', 'value', parameters('clientId')), createObject('name', 'AzureAd__ClientSecret', 'value', parameters('clientSecret')), createObject('name', 'AzureAd__CallbackPath', 'value', '/signin-oidc'), createObject('name', 'Authentication__Mode', 'value', parameters('authenticationMode')), createObject('name', 'AllowedHosts', 'value', variables('bffHostName'))), variables('allowedTenantAppSettings'), variables('bffDownstreamAppSettings'))]"
+        }
+      },
+      "dependsOn": [
+        "appServicePlan"
+      ]
+    },
+    "ownedApiApp": {
+      "condition": "[parameters('deployOwnedApiSite')]",
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2025-03-01",
+      "name": "[variables('ownedApiAppName')]",
+      "location": "[parameters('location')]",
+      "kind": "app",
+      "properties": {
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
+        "httpsOnly": true,
+        "publicNetworkAccess": "[variables('publicNetworkAccess')]",
+        "siteConfig": {
+          "alwaysOn": "[variables('alwaysOn')]",
+          "appCommandLine": "Croesus.OwnedApi.exe",
+          "ftpsState": "Disabled",
+          "minTlsVersion": "1.2",
+          "netFrameworkVersion": "v10.0",
+          "use32BitWorkerProcess": false,
+          "appSettings": [
+            {
+              "name": "ASPNETCORE_ENVIRONMENT",
+              "value": "Poc"
+            },
+            {
+              "name": "AzureAd__Instance",
+              "value": "[environment().authentication.loginEndpoint]"
+            },
+            {
+              "name": "AzureAd__TenantId",
+              "value": "[parameters('tenantId')]"
+            },
+            {
+              "name": "AzureAd__ClientId",
+              "value": "[parameters('ownedApiClientId')]"
+            },
+            {
+              "name": "Authorization__RequiredScope",
+              "value": "[parameters('ownedApiScopeName')]"
+            },
+            {
+              "name": "AllowedHosts",
+              "value": "[variables('ownedApiHostName')]"
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "appServicePlan"
+      ]
+    },
+    "legacyPrivateEndpoint": {
+      "condition": "[variables('deployPrivateEndpoints')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "croesus-bff-legacy-private-endpoint",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "privateEndpointName": {
+            "value": "[format('{0}-pe', variables('legacyAppName'))]"
+          },
+          "siteResourceId": {
+            "value": "[resourceId('Microsoft.Web/sites', variables('legacyAppName'))]"
+          },
+          "subnetResourceId": {
+            "value": "[parameters('privateEndpointSubnetId')]"
+          },
+          "privateDnsZoneResourceId": {
+            "value": "[parameters('privateDnsZoneId')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.47.16.16243",
+              "templateHash": "6491862133244774312"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for the private endpoint. Must match the region of the target subnet."
+              }
+            },
+            "privateEndpointName": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 80,
+              "metadata": {
+                "description": "Deterministic name of the private endpoint."
+              }
+            },
+            "siteResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the App Service site this endpoint fronts."
+              }
+            },
+            "subnetResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the subnet hosting the endpoint. Private endpoint network policies must be disabled on it."
+              }
+            },
+            "privateDnsZoneResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the privatelink.azurewebsites.net private DNS zone linked to the virtual network."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+              "apiVersion": "2024-05-01",
+              "name": "[format('{0}/{1}', parameters('privateEndpointName'), format('{0}-dns', parameters('privateEndpointName')))]",
+              "properties": {
+                "privateDnsZoneConfigs": [
+                  {
+                    "name": "privatelink-azurewebsites-net",
+                    "properties": {
+                      "privateDnsZoneId": "[parameters('privateDnsZoneResourceId')]"
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateEndpoints', parameters('privateEndpointName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateEndpoints",
+              "apiVersion": "2024-05-01",
+              "name": "[parameters('privateEndpointName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "subnet": {
+                  "id": "[parameters('subnetResourceId')]"
+                },
+                "privateLinkServiceConnections": [
+                  {
+                    "name": "[parameters('privateEndpointName')]",
+                    "properties": {
+                      "privateLinkServiceId": "[parameters('siteResourceId')]",
+                      "groupIds": [
+                        "sites"
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "outputs": {
+            "privateEndpointId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the private endpoint."
+              },
+              "value": "[resourceId('Microsoft.Network/privateEndpoints', parameters('privateEndpointName'))]"
+            },
+            "privateEndpointName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the private endpoint."
+              },
+              "value": "[parameters('privateEndpointName')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "legacyApp"
+      ]
+    },
+    "modernPrivateEndpoint": {
+      "condition": "[variables('deployPrivateEndpoints')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "croesus-bff-modern-private-endpoint",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "privateEndpointName": {
+            "value": "[format('{0}-pe', variables('modernAppName'))]"
+          },
+          "siteResourceId": {
+            "value": "[resourceId('Microsoft.Web/sites', variables('modernAppName'))]"
+          },
+          "subnetResourceId": {
+            "value": "[parameters('privateEndpointSubnetId')]"
+          },
+          "privateDnsZoneResourceId": {
+            "value": "[parameters('privateDnsZoneId')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.47.16.16243",
+              "templateHash": "6491862133244774312"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for the private endpoint. Must match the region of the target subnet."
+              }
+            },
+            "privateEndpointName": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 80,
+              "metadata": {
+                "description": "Deterministic name of the private endpoint."
+              }
+            },
+            "siteResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the App Service site this endpoint fronts."
+              }
+            },
+            "subnetResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the subnet hosting the endpoint. Private endpoint network policies must be disabled on it."
+              }
+            },
+            "privateDnsZoneResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the privatelink.azurewebsites.net private DNS zone linked to the virtual network."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+              "apiVersion": "2024-05-01",
+              "name": "[format('{0}/{1}', parameters('privateEndpointName'), format('{0}-dns', parameters('privateEndpointName')))]",
+              "properties": {
+                "privateDnsZoneConfigs": [
+                  {
+                    "name": "privatelink-azurewebsites-net",
+                    "properties": {
+                      "privateDnsZoneId": "[parameters('privateDnsZoneResourceId')]"
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateEndpoints', parameters('privateEndpointName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateEndpoints",
+              "apiVersion": "2024-05-01",
+              "name": "[parameters('privateEndpointName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "subnet": {
+                  "id": "[parameters('subnetResourceId')]"
+                },
+                "privateLinkServiceConnections": [
+                  {
+                    "name": "[parameters('privateEndpointName')]",
+                    "properties": {
+                      "privateLinkServiceId": "[parameters('siteResourceId')]",
+                      "groupIds": [
+                        "sites"
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "outputs": {
+            "privateEndpointId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the private endpoint."
+              },
+              "value": "[resourceId('Microsoft.Network/privateEndpoints', parameters('privateEndpointName'))]"
+            },
+            "privateEndpointName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the private endpoint."
+              },
+              "value": "[parameters('privateEndpointName')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "modernApp"
+      ]
+    },
+    "bffPrivateEndpoint": {
+      "condition": "[and(variables('deployPrivateEndpoints'), parameters('deployBffSite'))]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "croesus-bff-reference-private-endpoint",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "privateEndpointName": {
+            "value": "[format('{0}-pe', variables('bffAppName'))]"
+          },
+          "siteResourceId": {
+            "value": "[resourceId('Microsoft.Web/sites', variables('bffAppName'))]"
+          },
+          "subnetResourceId": {
+            "value": "[parameters('privateEndpointSubnetId')]"
+          },
+          "privateDnsZoneResourceId": {
+            "value": "[parameters('privateDnsZoneId')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.47.16.16243",
+              "templateHash": "6491862133244774312"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for the private endpoint. Must match the region of the target subnet."
+              }
+            },
+            "privateEndpointName": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 80,
+              "metadata": {
+                "description": "Deterministic name of the private endpoint."
+              }
+            },
+            "siteResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the App Service site this endpoint fronts."
+              }
+            },
+            "subnetResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the subnet hosting the endpoint. Private endpoint network policies must be disabled on it."
+              }
+            },
+            "privateDnsZoneResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the privatelink.azurewebsites.net private DNS zone linked to the virtual network."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+              "apiVersion": "2024-05-01",
+              "name": "[format('{0}/{1}', parameters('privateEndpointName'), format('{0}-dns', parameters('privateEndpointName')))]",
+              "properties": {
+                "privateDnsZoneConfigs": [
+                  {
+                    "name": "privatelink-azurewebsites-net",
+                    "properties": {
+                      "privateDnsZoneId": "[parameters('privateDnsZoneResourceId')]"
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateEndpoints', parameters('privateEndpointName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateEndpoints",
+              "apiVersion": "2024-05-01",
+              "name": "[parameters('privateEndpointName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "subnet": {
+                  "id": "[parameters('subnetResourceId')]"
+                },
+                "privateLinkServiceConnections": [
+                  {
+                    "name": "[parameters('privateEndpointName')]",
+                    "properties": {
+                      "privateLinkServiceId": "[parameters('siteResourceId')]",
+                      "groupIds": [
+                        "sites"
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "outputs": {
+            "privateEndpointId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the private endpoint."
+              },
+              "value": "[resourceId('Microsoft.Network/privateEndpoints', parameters('privateEndpointName'))]"
+            },
+            "privateEndpointName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the private endpoint."
+              },
+              "value": "[parameters('privateEndpointName')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "bffApp"
       ]
     }
   },
@@ -190,9 +779,30 @@
     "appServicePlanName": {
       "type": "string",
       "metadata": {
-        "description": "Name of the shared Windows B1 App Service plan."
+        "description": "Name of the shared Windows App Service plan."
       },
       "value": "[variables('appServicePlanName')]"
+    },
+    "resolvedAppServicePlanSkuName": {
+      "type": "string",
+      "metadata": {
+        "description": "Resolved App Service plan SKU name, so verification can read intent rather than infer it."
+      },
+      "value": "[parameters('appServicePlanSkuName')]"
+    },
+    "resolvedIngressMode": {
+      "type": "string",
+      "metadata": {
+        "description": "Resolved ingress posture applied to every site in this deployment."
+      },
+      "value": "[parameters('ingressMode')]"
+    },
+    "ingressTierGuard": {
+      "type": "string",
+      "metadata": {
+        "description": "Outcome of the ingress and plan tier compatibility guard."
+      },
+      "value": "[variables('ingressTierGuard')]"
     },
     "legacyAppName": {
       "type": "string",
@@ -250,6 +860,83 @@
       },
       "value": "[variables('modernCallbackUri')]"
     },
+    "bffSiteDeployed": {
+      "type": "bool",
+      "metadata": {
+        "description": "Whether the reference BFF site was provisioned by this deployment."
+      },
+      "value": "[parameters('deployBffSite')]"
+    },
+    "bffAppName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the reference BFF web app, distinct from the legacy and modern comparison apps."
+      },
+      "value": "[variables('bffAppName')]"
+    },
+    "bffHostName": {
+      "type": "string",
+      "metadata": {
+        "description": "Default host name of the reference BFF web app. Stable whether or not the site is provisioned, so a registration can claim it before hosting exists."
+      },
+      "value": "[variables('bffHostName')]"
+    },
+    "bffBaseUrl": {
+      "type": "string",
+      "metadata": {
+        "description": "HTTPS base URL of the reference BFF web app."
+      },
+      "value": "[variables('bffBaseUrl')]"
+    },
+    "bffCallbackUri": {
+      "type": "string",
+      "metadata": {
+        "description": "Microsoft Entra web callback URI of the reference BFF web app."
+      },
+      "value": "[variables('bffCallbackUri')]"
+    },
+    "ownedApiSiteDeployed": {
+      "type": "bool",
+      "metadata": {
+        "description": "Whether the owned API site the BFF proxies to was provisioned by this deployment."
+      },
+      "value": "[parameters('deployOwnedApiSite')]"
+    },
+    "ownedApiAppName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the owned API web app."
+      },
+      "value": "[variables('ownedApiAppName')]"
+    },
+    "ownedApiHostName": {
+      "type": "string",
+      "metadata": {
+        "description": "Default host name of the owned API web app."
+      },
+      "value": "[variables('ownedApiHostName')]"
+    },
+    "ownedApiBaseUrl": {
+      "type": "string",
+      "metadata": {
+        "description": "HTTPS base URL of the owned API web app, which is also the origin the BFF is permitted to reach."
+      },
+      "value": "[variables('ownedApiBaseUrl')]"
+    },
+    "ownedApiRegistrationDisplayName": {
+      "type": "string",
+      "metadata": {
+        "description": "Display name of the Microsoft Entra registration that must expose the delegated scope. Provisioned by scripts/provision-owned-api-registration.ps1, separately from the shared web registration."
+      },
+      "value": "[variables('ownedApiAppName')]"
+    },
+    "ownedApiDelegatedScope": {
+      "type": "string",
+      "metadata": {
+        "description": "Delegated scope the BFF requests for the owned API. Empty until ownedApiClientId is supplied."
+      },
+      "value": "[if(parameters('deployOwnedApiSite'), variables('ownedApiDelegatedScope'), '')]"
+    },
     "registrationInputs": {
       "type": "object",
       "metadata": {
@@ -262,10 +949,7 @@
         "displayName": "[format('croesus-bff-{0}-web', variables('uniqueSuffix'))]",
         "homeTenantId": "[parameters('tenantId')]",
         "signInAudience": "[if(equals(parameters('authenticationMode'), 'Organizations'), 'AzureADMultipleOrgs', 'AzureADMyOrg')]",
-        "webRedirectUris": [
-          "[variables('legacyCallbackUri')]",
-          "[variables('modernCallbackUri')]"
-        ]
+        "webRedirectUris": "[if(parameters('deployBffSite'), createArray(variables('legacyCallbackUri'), variables('modernCallbackUri'), variables('bffCallbackUri')), createArray(variables('legacyCallbackUri'), variables('modernCallbackUri')))]"
       }
     }
   }

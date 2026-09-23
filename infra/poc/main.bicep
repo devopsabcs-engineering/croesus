@@ -63,6 +63,15 @@ param appServicePlanSkuName string = 'B1'
 @description('Provision the reference BFF site. Off until the application in poc/bff-yarp-net10 is ready to publish.')
 param deployBffSite bool = false
 
+@description('Deploys the owned API the reference BFF proxies to. The BFF fails closed without a downstream, so this is effectively required whenever deployBffSite is true.')
+param deployOwnedApiSite bool = false
+
+@description('Application (client) ID of the API registration that exposes the delegated scope. Distinct from clientId: the audience boundary only exists when the resource and the client are two different applications.')
+param ownedApiClientId string = ''
+
+@description('Name of the delegated scope the API registration exposes and the BFF requests.')
+param ownedApiScopeName string = 'access_as_user'
+
 @description('Resource ID of the subnet hosting the private endpoints. Required only when ingressMode is Private.')
 param privateEndpointSubnetId string = ''
 
@@ -77,12 +86,15 @@ var modernAppName = 'croesus-bff-${uniqueSuffix}-modern'
 // app already claims /signin-oidc through modernCallbackUri and two registrations claiming one
 // redirect URI is a provisioning conflict. See DD-21.
 var bffAppName = 'croesus-bff-${uniqueSuffix}-bff'
+var ownedApiAppName = 'croesus-bff-${uniqueSuffix}-api'
 var legacyHostName = '${legacyAppName}.azurewebsites.net'
 var modernHostName = '${modernAppName}.azurewebsites.net'
 var bffHostName = '${bffAppName}.azurewebsites.net'
+var ownedApiHostName = '${ownedApiAppName}.azurewebsites.net'
 var legacyBaseUrl = 'https://${legacyHostName}'
 var modernBaseUrl = 'https://${modernHostName}'
 var bffBaseUrl = 'https://${bffHostName}'
+var ownedApiBaseUrl = 'https://${ownedApiHostName}'
 var legacyCallbackUri = '${legacyBaseUrl}/signin-oidc'
 var modernCallbackUri = '${modernBaseUrl}/signin-oidc'
 var bffCallbackUri = '${bffBaseUrl}/signin-oidc'
@@ -124,6 +136,28 @@ var effectiveAllowedTenantIds = authenticationMode == 'SingleTenant'
   ? [tenantId]
   : union([tenantId], allowedTenantIds)
 var authorityTenant = authenticationMode == 'Organizations' ? 'organizations' : tenantId
+// The three settings that make the BFF's proxy leg real: which scope it acquires, which origin it is
+// permitted to reach, and where the route sends the request. They are supplied together or not at all.
+// ProxyDestinationPolicy rejects a destination whose origin is absent from the allow list, so a partial
+// set would fail the host rather than produce an unconstrained proxy.
+var ownedApiDelegatedScope = 'api://${ownedApiClientId}/${ownedApiScopeName}'
+var bffDownstreamAppSettings = deployOwnedApiSite
+  ? [
+      {
+        name: 'DownstreamApi__Scopes__0'
+        value: ownedApiDelegatedScope
+      }
+      {
+        name: 'ProxyPolicy__AllowedDestinationOrigins__0'
+        value: ownedApiBaseUrl
+      }
+      {
+        name: 'ReverseProxy__Clusters__owned-api__Destinations__primary__Address'
+        value: '${ownedApiBaseUrl}/'
+      }
+    ]
+  : []
+
 var allowedTenantAppSettings = [for (allowedTenantId, index) in effectiveAllowedTenantIds: {
   name: 'Authentication__AllowedTenantIds__${index}'
   value: allowedTenantId
@@ -300,7 +334,56 @@ resource bffApp 'Microsoft.Web/sites@2025-03-01' = if (deployBffSite) {
           name: 'AllowedHosts'
           value: bffHostName
         }
-      ], allowedTenantAppSettings)
+      ], allowedTenantAppSettings, bffDownstreamAppSettings)
+    }
+  }
+}
+
+// The downstream the BFF proxies to. It validates bearer tokens only: no cookie scheme, no sign-in path,
+// and no session. That is what makes the audience boundary observable rather than asserted, because the
+// token this site accepts is audienced to its own registration and not to the web registration.
+resource ownedApiApp 'Microsoft.Web/sites@2025-03-01' = if (deployOwnedApiSite) {
+  name: ownedApiAppName
+  location: location
+  kind: 'app'
+  properties: {
+    serverFarmId: appServicePlan.id
+    httpsOnly: true
+    publicNetworkAccess: publicNetworkAccess
+    siteConfig: {
+      alwaysOn: alwaysOn
+      appCommandLine: 'Croesus.OwnedApi.exe'
+      ftpsState: 'Disabled'
+      minTlsVersion: '1.2'
+      // See the BFF site: an omitted value inherits v4.0 and ANCM returns HTTP 500.32 for .NET 10.
+      netFrameworkVersion: 'v10.0'
+      use32BitWorkerProcess: false
+      appSettings: [
+        {
+          name: 'ASPNETCORE_ENVIRONMENT'
+          value: 'Poc'
+        }
+        {
+          name: 'AzureAd__Instance'
+          value: environment().authentication.loginEndpoint
+        }
+        {
+          name: 'AzureAd__TenantId'
+          value: tenantId
+        }
+        {
+          name: 'AzureAd__ClientId'
+          value: ownedApiClientId
+        }
+        {
+          name: 'Authorization__RequiredScope'
+          value: ownedApiScopeName
+        }
+        {
+          name: 'AllowedHosts'
+          value: ownedApiHostName
+        }
+      ]
     }
   }
 }
@@ -389,6 +472,24 @@ output bffBaseUrl string = bffBaseUrl
 @description('Microsoft Entra web callback URI of the reference BFF web app.')
 output bffCallbackUri string = bffCallbackUri
 
+@description('Whether the owned API site the BFF proxies to was provisioned by this deployment.')
+output ownedApiSiteDeployed bool = deployOwnedApiSite
+
+@description('Name of the owned API web app.')
+output ownedApiAppName string = ownedApiAppName
+
+@description('Default host name of the owned API web app.')
+output ownedApiHostName string = ownedApiHostName
+
+@description('HTTPS base URL of the owned API web app, which is also the origin the BFF is permitted to reach.')
+output ownedApiBaseUrl string = ownedApiBaseUrl
+
+@description('Display name of the Microsoft Entra registration that must expose the delegated scope. Provisioned by scripts/provision-owned-api-registration.ps1, separately from the shared web registration.')
+output ownedApiRegistrationDisplayName string = ownedApiAppName
+
+@description('Delegated scope the BFF requests for the owned API. Empty until ownedApiClientId is supplied.')
+output ownedApiDelegatedScope string = deployOwnedApiSite ? ownedApiDelegatedScope : ''
+
 @description('Non-secret inputs for converging the shared Microsoft Entra web registration.')
 output registrationInputs object = {
   allowedTenantIds: effectiveAllowedTenantIds
@@ -397,8 +498,16 @@ output registrationInputs object = {
   displayName: 'croesus-bff-${uniqueSuffix}-web'
   homeTenantId: tenantId
   signInAudience: authenticationMode == 'Organizations' ? 'AzureADMultipleOrgs' : 'AzureADMyOrg'
-  webRedirectUris: [
-    legacyCallbackUri
-    modernCallbackUri
-  ]
+  // The BFF callback is included only when the site is provisioned. Sign-in through that host fails
+  // without it, because main.bicep points the BFF at the same clientId as the legacy and modern sites.
+  webRedirectUris: deployBffSite
+    ? [
+        legacyCallbackUri
+        modernCallbackUri
+        bffCallbackUri
+      ]
+    : [
+        legacyCallbackUri
+        modernCallbackUri
+      ]
 }
