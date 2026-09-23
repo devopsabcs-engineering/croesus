@@ -286,6 +286,25 @@ jobs:
       - name: Tier 2 replay evidence (Token Protection 1008 + two-leg correlation)
         run: |
           set -euo pipefail
+          # Three outcomes have to stay distinguishable: rows returned, the query succeeded
+          # with no rows, and the query never completed. Only the first is evidence. Piping
+          # az straight into tee collapsed the last two into a blank table, which reads as a
+          # clean result.
+          emit_query_result() {
+            local query="$1" empty_note="$2" rows
+            if rows="$(az monitor log-analytics query \
+                --workspace "$WORKSPACE_ID" \
+                --analytics-query "$query" \
+                --output table 2>/dev/null)"; then
+              if [ -z "${rows//[[:space:]]/}" ]; then
+                printf '_Verdict: not-executed. %s_\n\n' "$empty_note"
+              else
+                printf '%s\n\n' "$rows"
+              fi
+            else
+              printf '_Verdict: not-executed. The Log Analytics query did not complete, so nothing was collected for this exhibit. A collection failure is not a negative finding._\n\n'
+            fi
+          }
           unbound_query='AADNonInteractiveUserSignInLogs
           | where TimeGenerated > ago(7d)
           | where TokenProtectionStatusDetails != ""
@@ -319,15 +338,8 @@ jobs:
             echo "### Tier 2b Token Protection unbound / 1008 evidence"
             echo ""
           } | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
-          if az monitor log-analytics query \
-              --workspace "$WORKSPACE_ID" \
-              --analytics-query "$unbound_query" \
-              --output table | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null; then
-            printf '\n' | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
-          else
-            echo "_No 1008 rows yet: Token Protection 1008 populates only for a native-app client reaching Exchange Online / SharePoint Online / Teams under the report-only policy, and sign-in logs can lag a few minutes._" \
-              | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
-          fi
+          emit_query_result "$unbound_query" "The query succeeded and returned no rows. Token Protection 1008 populates only for a native-app client reaching Exchange Online, SharePoint Online or Teams under the report-only policy, and sign-in logs can lag a few minutes. Absence of rows is not evidence that binding held." \
+            | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
           {
             echo ""
             echo "### Tier 2a two-leg correlation (interactive SPA <-> non-interactive OBO leg)"
@@ -335,15 +347,8 @@ jobs:
             echo "_Interactive leg filtered by the immutable SPA app id \`${{ vars.SPA_CLIENT_ID }}\`. The CorrelationId + UserPrincipalName join is best-effort: it corroborates two distinct sign-in legs of one session, but it does NOT and cannot prove that identical bearer-token bytes were reused across requests._"
             echo ""
           } | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
-          if az monitor log-analytics query \
-              --workspace "$WORKSPACE_ID" \
-              --analytics-query "$correlation_query" \
-              --output table | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null; then
-            printf '\n' | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
-          else
-            echo "_Correlation returned no rows yet (sign-in logs can lag; widen the window in scripts/evidence-kql.kusto if needed)._" \
-              | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
-          fi
+          emit_query_result "$correlation_query" "The query succeeded and returned no rows. Sign-in logs can lag; widen the window in scripts/evidence-kql.kusto if needed. No correlated legs were observed, which is not the same as establishing that none occurred." \
+            | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
           echo "> Primary Tier 2a evidence is the API App Insights \`ReplayAttempt\` custom event; full query set: \`scripts/evidence-kql.kusto\`." \
             | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
       - name: Upload Tier 2 replay evidence artifact

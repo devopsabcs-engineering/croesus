@@ -433,6 +433,11 @@ Decisions I made under delegated authority, where the user answered "you may if 
 * WI-29: State the required Graph API version for token protection status in `scripts/evidence-kql.kusto` and in any sign-in log capture step, and add a guard that treats a null `tokenProtectionStatusDetails` as not-executed rather than as an absence of findings (high)
   * Source: 2026-09-23 evidence review
   * Dependency: none
+  * Status: implemented 2026-09-23. Query 4 in `scripts/evidence-kql.kusto` now buckets every row instead of filtering to populated ones, so "signal out of scope", "nothing collected" and "binding observed" stay distinguishable, and its header states the v1.0 versus beta Graph behaviour. The Tier 2 evidence step in `.github/workflows/deploy-croesus.yml` gained an `emit_query_result` helper: piping `az` straight into `tee` meant a successful query returning zero rows produced a blank table indistinguishable from a passing exhibit, and a failed query took the same path. All three outcomes now print an explicit verdict, with the two non-row outcomes labelled not-executed.
 * WI-30: Add the tenant baseline measurement to `docs/evidence-narrative.md` so the customer conversation can cite an observed unbound rate in traffic unrelated to the escalation rather than reasoning about it (medium)
   * Source: 2026-09-23 evidence review
   * Dependency: agreement on how much tenant-shaped data may be shared
+  * Status: implemented 2026-09-23 as the "A measured base rate for Unbound" section. The dependency was resolved by publishing proportions and the binding-to-token-type correlation only, with no application names, user principals or row identifiers. The section states that a base rate is context rather than a verdict and that the original finding stays open.
+* WI-31: Reproduce the tenant baseline as a repeatable capture rather than a transcribed sample (low)
+  * Source: 2026-09-23 WI-30 implementation
+  * Dependency: none. Query 5 exists; the percentages in `docs/evidence-narrative.md` are currently hand-carried from a single Graph beta sample and will drift from the workspace result.

@@ -22,6 +22,10 @@
 //     population rules, and a given user action may land in one, several, or
 //     none of them. Absence of a row in one table is not evidence that the
 //     corresponding step did not happen.
+//   * An empty result is never a finding on its own. Separate "the signal was
+//     out of scope", "nothing was collected", and "the field was read from an
+//     API version that does not return it". Queries 4 and 5 below show how; the
+//     Microsoft Graph version trap is described in the Query 4 header.
 //
 // The authoritative per-request record is the API's own Application Insights
 // telemetry: the OboExchange and ReplayAttempt custom events emitted by
@@ -154,27 +158,89 @@ SigninLogs
 | sort by TimeGenerated desc
 
 // =============================================================================
-// Query 4 - Token Protection session binding (separate, optional exhibit)
+// Query 4 - Token Protection session binding coverage (separate, optional exhibit)
 //
-// Reports the sign-in-session binding status where Token Protection populated
-// it. This is a device-binding exhibit, unrelated to the questions the queries
-// above address, and is kept separate so the two are not read together.
+// Reports the sign-in-session binding status as a COVERAGE SUMMARY rather than
+// as a filtered row list. This is a device-binding exhibit, unrelated to the
+// questions the queries above address, and is kept separate so the two are not
+// read together.
+//
+// The earlier form of this query filtered to rows where the signal was present.
+// That made two very different situations produce the same empty output: a
+// window in which the signal was out of scope, and a window in which no rows
+// were collected at all. Bucketing every row, including the ones where the
+// field is absent, keeps those apart. Read the result as follows:
+//
+//   * A `not-populated` bucket and nothing else: the signal was out of scope for
+//     the traffic in the window. Expected for this application shape. Record it
+//     as not-executed, never as a clean binding result.
+//   * No rows returned at all: no non-interactive sign-ins were collected. That
+//     is a collection failure to investigate, not a binding finding.
+//   * A `bound` or `unbound` bucket: the signal populated. Read the caveats
+//     below before attaching any meaning to it.
 //
 // The signal populates only for native-app clients on registered devices
 // reaching resources that support it, and only when a Token Protection policy is
-// in scope. For a browser client calling a custom API it will usually be empty.
+// in scope. For a browser client calling a custom API it will usually be absent.
+//
+// READING THIS FIELD THROUGH MICROSOFT GRAPH INSTEAD: the API version is load
+// bearing. `https://graph.microsoft.com/v1.0/auditLogs/signIns` returns
+// `tokenProtectionStatusDetails` as null on rows where the beta endpoint returns
+// a populated status. A v1.0 reader therefore records nothing and invites the
+// reader to conclude that no binding problem was observed. Use the beta endpoint
+// for this field, and treat a null as not-executed rather than as an absence of
+// findings.
 //
 // What this does NOT prove: anything about token reuse, grant type, or the
-// Croesus flow. An empty result means the signal did not populate, which is the
-// expected outcome here and is not a negative finding.
+// Croesus flow.
 // =============================================================================
 let lookback = 7d;
 AADNonInteractiveUserSignInLogs
 | where TimeGenerated > ago(lookback)
-| where isnotempty(TokenProtectionStatusDetails)
+| extend HasBindingSignal = isnotempty(TokenProtectionStatusDetails)
 | extend parsed = parse_json(TokenProtectionStatusDetails)
-| extend BindingStatus = tostring(parsed["signInSessionStatus"]),
-         BindingStatusCode = tostring(parsed["signInSessionStatusCode"])
-| project TimeGenerated, UserPrincipalName, AppDisplayName, ResourceDisplayName,
-          BindingStatus, BindingStatusCode, CorrelationId
-| sort by TimeGenerated desc
+| extend BindingStatus = iff(HasBindingSignal, tostring(parsed["signInSessionStatus"]), "not-populated"),
+         BindingStatusCode = iff(HasBindingSignal, tostring(parsed["signInSessionStatusCode"]), "")
+| summarize Rows = count(), Earliest = min(TimeGenerated), Latest = max(TimeGenerated)
+          by BindingStatus, BindingStatusCode
+| sort by Rows desc
+
+// =============================================================================
+// Query 5 - Tenant binding baseline (context for the Unbound discussion)
+//
+// Establishes how often each binding status occurs across ALL sign-in traffic in
+// the tenant, broken out by the incoming token type. Its purpose is to give the
+// Unbound conversation a denominator.
+//
+// The escalation treats an `unbound` status, and event code 1008 in particular,
+// as an anomaly that needs explaining. Running this query answers whether that
+// status is rare or routine in a given tenant before anyone attributes it to a
+// specific application or grant.
+//
+// Expect `bound` rows to be the rows carrying a primary refresh token, because
+// binding is a property of how the client obtained its session on the device.
+// That is the measurement behind the claim that a server-side token custody
+// change cannot convert an unbound sign-in into a bound one.
+//
+// What this does NOT prove: that any particular unbound row is benign; that the
+// customer's observation has the same cause as any row here. It establishes a
+// base rate, and a base rate is context, not a verdict.
+// =============================================================================
+let lookback = 7d;
+union
+    (SigninLogs                      | extend SourceTable = "SigninLogs"),
+    (AADNonInteractiveUserSignInLogs | extend SourceTable = "AADNonInteractiveUserSignInLogs")
+| where TimeGenerated > ago(lookback)
+| extend parsed = parse_json(TokenProtectionStatusDetails)
+| extend BindingStatus = iff(isnotempty(TokenProtectionStatusDetails),
+                             tostring(parsed["signInSessionStatus"]), "not-populated"),
+         BindingStatusCode = iff(isnotempty(TokenProtectionStatusDetails),
+                                 tostring(parsed["signInSessionStatusCode"]), ""),
+         TokenType = coalesce(tostring(IncomingTokenType), "none")
+| summarize Rows = count() by SourceTable, BindingStatus, BindingStatusCode, TokenType
+| extend ShareOfTable = round(100.0 * Rows / toscalar(
+             union
+                 (SigninLogs                      | where TimeGenerated > ago(lookback)),
+                 (AADNonInteractiveUserSignInLogs | where TimeGenerated > ago(lookback))
+             | count), 1)
+| sort by Rows desc

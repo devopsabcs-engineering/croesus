@@ -55,6 +55,36 @@ Tier 2b reproduces the customer's exact telemetry on the terms the platform supp
 
 The audience boundary carries the argument on its own. Two distinct audiences and enforced rejection in both directions demonstrate a standards-compliant OBO regardless of whether any Token Protection signal is present. Tier 2a adds the mirror image: a gated server-side replay that forwards a real Graph token from the middle tier and emits a distinct `ReplayAttempt` event, reproducing the replay shape the customer's logs attribute to the vendor backend so the wrong and right flows sit side by side.
 
+## A measured base rate for Unbound
+
+The scope argument above establishes that 1008 cannot be the OBO proof. A measurement establishes something a reader can verify independently: how often the unbound status appears in traffic that has nothing to do with this escalation.
+
+On 2026-09-23 we sampled the 200 most recent sign-in rows in the demonstration tenant and grouped them by binding status, status code, and incoming token type. The tenant hosts no back-end-for-frontend, and none of the sampled rows belong to the proof-of-concept application. Query 5 in [../scripts/evidence-kql.kusto](../scripts/evidence-kql.kusto) reproduces the grouping against a Log Analytics workspace.
+
+| Binding status and code | Incoming token type   | Share of sample |
+|-------------------------|-----------------------|-----------------|
+| `bound` / `0`           | Primary refresh token | 74.5%           |
+| `unbound` / `1002`      | None                  | 11.5%           |
+| `none` / `1002`         | None                  | 9.0%            |
+| `none` / `0`            | None                  | 2.0%            |
+| `none` / `1006`         | None                  | 1.0%            |
+| `none` / `1006`         | Primary refresh token | 1.0%            |
+| `bound` / `0`           | None                  | 0.5%            |
+| `unbound` / `1008`      | None                  | 0.5%            |
+
+Two readings follow, and both support the position this document already takes.
+
+An unbound status occupied roughly twelve percent of ordinary traffic, code 1008 among it, on applications unrelated to the escalation and with no BFF anywhere in the tenant. Unbound is a routine binding diagnostic in a working tenant, which is what the scope argument predicts, and observing it does not single out a vendor backend.
+
+Every bound row carried a primary refresh token, and no unbound row carried one. Binding status tracks whether the client presented a primary refresh token, which is a property of how the client obtained its session on the device and of the broker that issued it. Server-side token custody sits elsewhere in the flow entirely. A back-end-for-frontend therefore cannot convert an unbound sign-in into a bound one, and no one should promise the customer that adopting one will make the status change.
+
+> [!IMPORTANT]
+> Reading this field through Microsoft Graph requires the beta sign-in log endpoint. `https://graph.microsoft.com/v1.0/auditLogs/signIns` returns `tokenProtectionStatusDetails` as null on the same rows where beta returns a populated status. A v1.0 reader collects nothing and produces output that looks like a clean binding result, which inverts the finding. Treat a null as evidence not collected.
+
+A base rate is context, not a verdict. Nothing here establishes that any particular unbound row in the customer's logs is benign, and nothing here closes the original observation. The finding stays open until grant and policy evidence explains it. What the measurement removes is the assumption that the status is unusual enough to be suspicious on its own.
+
+One further observation belongs with this one. The proof-of-concept application registration has never recorded a delegated user sign-in, so the pipeline's interactive, delegated-acquisition, Conditional Access, and sign-in-log-correlation criteria correctly report `not-executed`. Those verdicts describe an absent interactive session rather than a control that was tested and passed.
+
 ## Registration correctness
 
 > [!IMPORTANT]
