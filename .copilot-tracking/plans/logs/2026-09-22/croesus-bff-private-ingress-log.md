@@ -16,12 +16,27 @@
   * Implementation found: the deployed plan is F1 Free, which supports neither private endpoints nor VNet integration. The B1 research finding is correct; the deployed plan is simply not B1.
   * Secondary finding: infra/poc/main.bicep declares B1, so the deployed resources diverge from the template in this repository
   * Consequence: every Step 2.2 through Step 2.4 endpoint action is unreachable until the tier and the template divergence are resolved
+  * Resolution (2026-09-22): the user disclosed that an external process degrades the plan to F1 on roughly a 24 hour cycle. This converts the finding from a one-time blocker into a permanent constraint, because a private endpoint cannot survive a tier that repeatedly drops below B1. Resolved by ID-01 Option C, which adopts public ingress and makes the tier an explicit, self-diagnosing template parameter.
 * DD-19: No private network path exists in the subscription (high)
   * Plan specifies: Step 1.2 selects a browser path and a deployment runner path from existing approved infrastructure
   * Implementation found: no privatelink.azurewebsites.net zone, no VPN or ExpressRoute gateway, no Bastion, no peering. croesus-vnet in rg-croesus is shaped for this purpose but sits in Canada Central while the POC apps are in Canada East, and nothing connects to it.
   * Consequence: both the browser path and the runner path are recorded as undetermined rather than selected
+  * Resolution (2026-09-22): no longer blocking under ID-01 Option C. Public ingress needs neither path, and the hosted CI runner is sufficient. The finding is retained because the production successor will have to solve it.
 * DD-20: Step 1.3 returned blocked and Step 1.4 returned out of scope (medium)
   * Both are legitimate recorded branches rather than deviations, captured here so the downstream effect is traceable
+* DD-21: Phase 1 recorded the wrong hostname as the reference BFF origin (high)
+  * Plan specifies: Step 1.2 records a hostname that Step 4.1 later registers redirect URIs against, so the two phases stay independent
+  * Implementation recorded: the existing croesus-bff-a3v24wppuvd34-modern hostname, which is the modern comparison app, not a new site
+  * Consequence: Phase 4 inherited the error and defaulted BFF_BASE_URI to that host. The modern app already claims /signin-oidc through modernCallbackUri at infra/poc/main.bicep line 45, so two registration objects would have claimed one identical redirect URI.
+  * Correction: the reference BFF hostname is croesus-bff-a3v24wppuvd34-bff. Fixed in scripts/provision-app-registrations.sh and in the Phase 1 record in the changes file. Step 2.4 now states the constraint explicitly so it cannot recur.
+  * Root cause: a recording error in one phase propagated silently to a later phase through the changes file, because the later phase treated the recorded value as verified input.
+
+* DD-22: Two phases silently disabled a security test suite outside their file scope (high)
+  * Plan specifies: phases are scoped to disjoint file sets so they can run in parallel without interfering
+  * Implementation found: `scripts/test-classic-net-bff-deployment-entra-static.ps1` parses `infra/poc/main.bicep` by literal string anchors and asserts literal values from `poc/legacy-net452/web.config`. Phase 2 renamed the description used as a parse anchor; Phase 9 changed the framework literals. Neither file was in the other phase's scope, and neither change was a defect in itself.
+  * Consequence: the suite threw at its first anchor from the moment Phase 2 landed, which disabled every credential-safety assertion after that line while still failing loudly enough to be mistaken for an unrelated infra problem. CI step `.github/workflows/classic-net-bff-poc.yml` line 190 would have failed for the wrong reason.
+  * Correction: the orchestrator repaired all three. The modern-resource block now terminates at the new `bffApp` resource rather than at the outputs, which is also more robust than the description anchor it replaced. Legacy assertions now expect 4.8. Suite verified at exit 0.
+  * Root cause: disjoint *write* scopes are not disjoint *blast radii*. A test that couples to another file by literal string makes any edit to that file a potential test break, and file-scope isolation cannot detect it. Caught only because Phase 5 captured a baseline before its own edits and Phase 9 evaluated the assertions in isolation rather than assuming.
   * Step 3.7 executes its blocked branch; no artefact may claim the BFF fronts the legacy app
   * The two-app scope is reduced by a recorded gate outcome, not silently
 
@@ -260,6 +275,42 @@ The following entries were raised by plan validation and have been closed by pla
   * Source: Phase 4, Step 4.1
   * docs/configuration-contract.md has no row for `croesus-bff-cert` or `BFF_CLIENT_ID`. Phase 7 Step 7.1 already owns this file and can absorb it.
   * Dependency: Phase 7
+* WI-16: Automate or schedule recovery from the F1 tier degradation cycle (medium)
+  * Source: ID-01, Q1 answer
+  * An external process returns the App Service plan to F1 on roughly a 24 hour cycle, which takes the demo down until someone redeploys. Step 2.3 makes the condition diagnosable and Step 5.1 makes a 403 attributable, but neither prevents the outage. A scheduled scale-up check, or identification and exemption of the degrading process, would.
+  * Dependency: Phase 2 and Phase 5 completion
+* WI-17: Build the private ingress successor in an environment that can sustain it (medium)
+  * Source: ID-01, Option C
+  * The private design survives as an opt-in module under Step 2.2 but is never exercised. It needs a plan that stays at B1 or better and a same-region VNet with a linked privatelink.azurewebsites.net zone, neither of which the POC subscription has. Supersedes WI-01 and WI-12 as the umbrella item.
+  * Dependency: a successor environment
+* WI-18: Corroborate the unconnected-client assertion rather than trusting the caller (low)
+  * Source: Phase 5, Step 5.2
+  * `verify-ingress.ps1` accepts `-UnconnectedClient` as an operator assertion. A private-address heuristic was considered and rejected because an RFC 1918 source address is not proof of being off the VNet, and a false negative would be worse than the current honest `not-executed`. A real corroboration needs an out-of-band signal such as a known-external egress check.
+  * Dependency: WI-17, since the assertion is inert while ingress is public
+* WI-19: Decouple the static suite from literal anchors in files it does not own (medium)
+  * Source: DD-22
+  * The suite parses `main.bicep` by string search and asserts `web.config` values by literal. Both couplings made unrelated, correct edits in other phases break it. Parsing the compiled ARM JSON, or reading the expected framework from the project file rather than hardcoding it, would remove the class rather than the instance.
+  * Dependency: none
+* WI-20: Refresh the 4.5.2 references in docs and the workflow evidence summary (medium)
+  * Source: Phase 9
+  * `docs/classic-net-bff-poc.md` carries roughly a dozen references and `.github/workflows/classic-net-bff-poc.yml` line 589 describes a compile-target-versus-runtime split that no longer exists. Descriptive only, so nothing breaks, but the evidence narrative now contradicts the artifact. The comparison table needs rework rather than find-and-replace.
+  * Dependency: Phase 7, which owns documentation accuracy
+* WI-21: Give `verify-ingress.ps1` an opt-in strict switch (low)
+  * Source: Phase 6
+  * The workflow reconstructs the not-executed count by string-parsing the script's `summary pass=N fail=N not-executed=N` line. That works, but it couples CI to an output format the script does not treat as a contract. A `-Strict` switch exiting non-zero when any check was declined would replace the parse with an exit code.
+  * Dependency: none
+* WI-22: Remove the escalation narrative from the `package.json` description field (medium)
+  * Source: Phase 7
+  * The npm `description` field contains a multi-paragraph markdown blockquote asserting the Step 1 fork is still open and listing Q7 and Q8 as outstanding. It is stale relative to the three-way session findings, and prose of that shape in a package manifest field is a defect independent of its accuracy. `README.md` carries the same stale claim.
+  * Dependency: none
+* WI-23: Record in the repository that the two-app comparison scope survived (medium)
+  * Source: Phase 7
+  * The Phase 1 gate contemplated formally reducing to a single app. ID-02 authorized the retarget instead, so the reduction never happened. That resolution exists only in this tracking log, and a reader of `poc/` or the root README alone cannot tell which outcome occurred.
+  * Dependency: none
+* WI-24: Implement the bounded log-ingestion deadline (medium)
+  * Source: Phase 6, Step 6.2
+  * The evidence job reports `sign-in-log-correlation` as `not-executed`, which is honest but weaker than the bounded poll the step describes. A step running the KQL in `scripts/evidence-kql.kusto` against a deadline, reporting `unavailable` on timeout, would close it.
+  * Dependency: a delegated-user evidence session, WI-03
 
 ### Raised During Planning
 
@@ -292,3 +343,33 @@ Items identified during planning that fall outside current scope.
 * WI-09: Host the reference BFF by setting deployBffSite to true once the hosting decision is recorded, and update the registration redirect URIs to the provisioned hostname (medium)
   * Source: DR-08, Step 2.4
   * Dependency: Step 1.2 hosting verdict and Phase 2 completion
+
+## User Decisions
+
+Decisions recorded from Implementation Decision prompts.
+
+* ID-01: Ingress architecture for the POC — Option C selected
+  * Context: Phase 1 found no Azure Policy enforcing disabled public access on Microsoft.Web/sites at any reachable scope, which falsified the premise the plan was built on. It also found the App Service plan at F1, which supports no private endpoint, and no private network path anywhere in the subscription.
+  * Decision: adopt public ingress for the POC demo, and keep private ingress as the documented production-successor design rather than building it.
+  * User rationale: the recommendation was accepted as given. The user additionally disclosed that an external process degrades the plan to F1 on roughly a 24 hour cycle, which independently rules out private endpoints — an endpoint cannot survive a tier repeatedly dropping below B1.
+  * Authorization granted: scale the plan to B1, with the standing expectation that it will degrade again and require a redeploy.
+  * Consequence: Phase 2 is rescoped from building private endpoints to parameterizing ingress; DD-18 and DD-19 are resolved; WI-16 and WI-17 are raised.
+
+Decisions I made under delegated authority, where the user answered "you may if you judge this best".
+
+* ID-02: Legacy comparison app runtime target — retarget poc/legacy-net452 to .NET Framework 4.8
+  * Question asked: whether to retarget the legacy app to a supported .NET Framework version.
+  * Decision: yes, to 4.8 rather than 4.8.1.
+  * Reasoning: net452 reached end of support in April 2022, so Step 1.3 returns blocked while it stands, and dropping the legacy app would silently reduce the two-app comparison scope the user required be preserved. 4.8 is in-box on App Service Windows and is backward compatible with net452, making this a low-risk TargetFrameworkVersion change. 4.8.1 was rejected because it cannot be installed on Windows Server 2016 or 2019 and is only in-box on Server 2025, which would make the target dependent on a host version the POC does not control.
+  * Consequence: resolves the Step 1.3 blocked verdict and closes WI-02.
+
+* ID-03: CI runner model — do not introduce a self-hosted or connected runner
+  * Question asked: whether to set up a self-hosted runner.
+  * Decision: no. Phase 6 Step 6.1 keeps the deploy job on windows-latest.
+  * Reasoning: the runner split existed only because a hosted runner has no route to a private endpoint. Under ID-01 the apps are publicly reachable, so that constraint is gone, and adding a self-hosted runner would carry cost, patching, and a pull-request exposure surface for no benefit. Step 6.1 records the condition under which this stops being true, so a future move to private ingress knows to revisit it.
+  * Consequence: supersedes DD-10.
+
+* ID-04: 403 handling — diagnose rather than prescribe a blind redeploy
+  * Context: the user asked to be reminded to redeploy on a 403.
+  * Decision: Step 5.1 resolves a 403 to one of tier degradation, ingress drift, or a stopped site, each with a named remedy, instead of always recommending a redeploy.
+  * Reasoning: three distinct causes present to the operator as the same symptom. The observed 403 carrying a "Web App - Unavailable" title is specifically the disabled-public-access signature, which a redeploy would not fix. Prescribing one remedy for all three would send the operator down the wrong path in two cases out of three.

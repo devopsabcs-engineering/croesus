@@ -2,28 +2,33 @@
 applyTo: '.copilot-tracking/changes/2026-09-22/croesus-bff-private-ingress-changes.md'
 ---
 <!-- markdownlint-disable-file -->
-# Implementation Plan: Croesus BFF Private Ingress and Security Evidence
+# Implementation Plan: Croesus BFF Ingress Restoration and Security Evidence
 
 ## Overview
 
-Restore reachability to the Croesus POC App Services through per-app private endpoints while public ingress stays disabled, then add a hardened reference BFF and honest authentication evidence that does not overstate what the logs prove.
+Restore reachability to the Croesus POC App Services over public ingress, add a hardened reference BFF, and produce honest authentication evidence that does not overstate what the logs prove. Private ingress is documented as the production-successor design rather than built, because Phase 1 falsified the premise that policy compelled it and the hosting tier cannot sustain it.
 
 ## Objectives
 
 ### User Requirements
 
-* Keep public network access disabled because Azure Policy prohibits it, and use private endpoints instead — Source: conversation 2026-09-22, "we are getting this because of azure policy disallowing public access --- perhaps we should use private endpoints?"
+* Adopt public ingress for the POC demo and document private ingress as the production-successor design — Source: conversation 2026-09-22, ID-01 decision, Option C accepted
+* Scale the App Service plan to B1, accepting that an external process may degrade it back to F1 on roughly a 24 hour cycle — Source: conversation 2026-09-22, "scaling to B1 is authorized but know that azure policy may degrade to F1 every 24 hours so will need to be reminded to redeploy if 403"
 * Eliminate the critical, high, and major defects found in the earlier plan before committing to implementation — Source: conversation 2026-09-22, rubber-duck request
 * Produce implementation planning artefacts from the revised research — Source: conversation 2026-09-22, task-plan request
 
+### Superseded Requirement
+
+* Keep public network access disabled because Azure Policy prohibits it, and use private endpoints instead — Source: conversation 2026-09-22, "we are getting this because of azure policy disallowing public access --- perhaps we should use private endpoints?". Withdrawn after Phase 1 Step 1.1 found no policy assignment at any reachable scope enforcing publicNetworkAccess on Microsoft.Web/sites. Recorded as DD-17.
+
 ### Derived Objectives
 
-* Verify the enforcing policy assignment before designing around it — Derived from: an application-layer HTTP 403 does not identify who set publicNetworkAccess to Disabled, so the constraint must be confirmed rather than assumed
-* Treat browser reachability, DNS resolution, and SCM deployment as three separate paths — Derived from: a private endpoint that serves the browser still leaves a hosted CI runner unable to deploy
+* Verify the enforcing policy assignment before designing around it — Derived from: an application-layer HTTP 403 does not identify who set publicNetworkAccess to Disabled, so the constraint must be confirmed rather than assumed. This objective was met and it overturned the plan's premise.
+* Diagnose a 403 by distinguishing its causes rather than prescribing a blind redeploy — Derived from: tier degradation, disabled public ingress, and a stopped site each produce a failure the operator sees as the same symptom
 * Replace browser-held token custody with server-side caching in the reference BFF — Derived from: SaveTokens places tokens in the encrypted ticket the browser holds, which contradicts the BFF premise
-* Gate the legacy comparison app on a supported-runtime verdict — Derived from: private networking is not a runtime-support exemption, and silently dropping the legacy app would reduce the stated two-app scope
+* Gate the legacy comparison app on a supported-runtime verdict — Derived from: ingress choice is not a runtime-support exemption, and silently dropping the legacy app would reduce the stated two-app scope
 * Separate deterministic CI checks from delegated-user evidence — Derived from: workload identity authentication and report-only policy results cannot substitute for user security proof
-* Decide the legacy identity bridge scope before Phase 3 assumes it — Derived from: a BFF cannot be said to front the legacy app without an explicit bridge and blocked direct ingress, and private networking creates neither
+* Keep the private ingress design recoverable as documentation — Derived from: the production successor still needs it, and the research that produced it remains valid even though the POC will not build it
 
 ## Context Summary
 
@@ -57,7 +62,7 @@ Restore reachability to the Croesus POC App Services through per-app private end
 
 ## Implementation Checklist
 
-Execution waves: Phase 1 runs alone. Phases 2, 3, 4, and 5 form wave 1 and may run concurrently, with no data dependency between them because Step 2.4 and Step 4.1 both read the BFF hostname recorded in Step 1.2. Phases 6 and 7 form wave 2 and may run concurrently with each other once wave 1 completes. Phase 8 runs last. Parallel phases append only under their own uniquely titled section of the changes file and never rewrite another phase's section.
+Execution waves: Phase 1 runs alone. Phases 2, 3, 4, 5, and 9 form wave 1 and may run concurrently, with no data dependency between them because Step 2.4 and Step 4.1 both read the BFF hostname recorded in Step 1.2. Phases 6 and 7 form wave 2 and may run concurrently with each other once wave 1 completes. Phase 8 runs last, after Phase 9 despite the lower number. Parallel phases append only under their own uniquely titled section of the changes file and never rewrite another phase's section.
 
 ### [x] Implementation Phase 1: Prerequisite Verification and Gate Capture
 
@@ -72,98 +77,109 @@ Execution waves: Phase 1 runs alone. Phases 2, 3, 4, and 5 form wave 1 and may r
 * [x] Step 1.4: Decide legacy identity bridge scope and bypass prevention
   * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 135-168)
 
-### [ ] Implementation Phase 2: Private Ingress Infrastructure
+### [x] Implementation Phase 2: Ingress Restoration and Successor Design
 
-BLOCKED by Phase 1. The deployed App Service plan is F1 Free, which supports no private endpoint, and no private network path exists in the subscription. The Azure Policy premise that motivated this phase was falsified. Awaiting the ID-01 architecture decision.
+Rescoped by the ID-01 decision. Private endpoints are no longer built. Two Phase 1 findings drove this: no policy enforces disabled public ingress, and the plan is degraded to F1 on roughly a 24 hour cycle, which would break a private endpoint each time because F1 cannot host one.
 
 <!-- parallelizable: true -->
 
-* [ ] Step 2.1: Pin disabled public ingress in Bicep
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 175-206)
-* [ ] Step 2.2: Add a private endpoint module and per-app endpoints
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 207-236)
-* [ ] Step 2.3: Wire private DNS records for application and SCM hostnames
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 237-260)
-* [ ] Step 2.4: Add the optional reference BFF site and endpoint
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 261-293)
-* [ ] Step 2.5: Validate phase changes
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 294-306)
+* [x] Step 2.1: Parameterize ingress and restore public access for the POC
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 177-209)
+* [x] Step 2.2: Retain the private endpoint path as an opt-in successor module
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 210-246)
+* [x] Step 2.3: Make the plan tier explicit and self-diagnosing
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 247-277)
+* [x] Step 2.4: Add the reference BFF site on its own hostname
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 278-314)
+* [x] Step 2.5: Validate phase changes
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 315-328)
 
 ### [x] Implementation Phase 3: Reference BFF Application
 
 <!-- parallelizable: true -->
 
 * [x] Step 3.1: Scaffold the project and test project from the modern app conventions
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 313-352)
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 335-374)
 * [x] Step 3.2: Implement server-side token and session custody
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 353-388)
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 375-410)
 * [x] Step 3.3: Implement the constrained proxy boundary
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 389-426)
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 411-448)
 * [x] Step 3.4: Implement the session and token lifecycle
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 427-458)
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 449-480)
 * [x] Step 3.5: Implement the sanitized evidence surface
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 459-501)
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 481-523)
 * [x] Step 3.6: Implement negative authorization and protocol tests
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 502-541)
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 524-563)
 * [x] Step 3.7: Implement the legacy bridge contract or record it blocked
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 542-581)
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 564-603)
 * [x] Step 3.8: Validate phase changes
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 582-592)
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 604-614)
 
 ### [x] Implementation Phase 4: Registration and Evidence Queries
 
 <!-- parallelizable: true -->
 
 * [x] Step 4.1: Add the confidential BFF registration block
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 599-637)
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 621-659)
 * [x] Step 4.2: Set the owned API token version and optional claims
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 638-670)
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 660-692)
 * [x] Step 4.3: Replace speculative KQL with operation-mapped queries
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 671-709)
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 693-731)
 * [x] Step 4.4: Validate phase changes
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 710-720)
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 732-742)
 
-### [ ] Implementation Phase 5: Provisioning and Verification Scripts
-
-<!-- parallelizable: true -->
-
-* [ ] Step 5.1: Add private path preflight assertions
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 727-767)
-* [ ] Step 5.2: Add a public negative check
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 768-792)
-* [ ] Step 5.3: Validate phase changes
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 793-803)
-
-### [ ] Implementation Phase 6: Pipeline Wiring
+### [x] Implementation Phase 5: Provisioning and Verification Scripts
 
 <!-- parallelizable: true -->
 
-* [ ] Step 6.1: Split hosted validation from private deployment
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 810-843)
-* [ ] Step 6.2: Separate deterministic checks from delegated user evidence
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 844-878)
-* [ ] Step 6.3: Define rollback behaviour
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 879-903)
+* [x] Step 5.1: Add ingress preflight assertions and 403 diagnosis
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 749-801)
+* [x] Step 5.2: Add the posture negative check
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 802-828)
+* [x] Step 5.3: Validate phase changes
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 829-839)
 
-### [ ] Implementation Phase 7: Documentation Correction
+### [x] Implementation Phase 6: Pipeline Wiring
 
 <!-- parallelizable: true -->
 
-* [ ] Step 7.1: Correct the private access prerequisites and proof limits
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 910-937)
-* [ ] Step 7.2: Validate phase changes
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 938-947)
+* [x] Step 6.1: Wire the reference BFF and ingress verification into CI
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 846-881)
+* [x] Step 6.2: Separate deterministic checks from delegated user evidence
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 882-916)
+* [x] Step 6.3: Define rollback behaviour
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 917-941)
 
-### [ ] Implementation Phase 8: Validation
+### [x] Implementation Phase 7: Documentation Correction
+
+<!-- parallelizable: true -->
+
+* [x] Step 7.1: Document the ingress decision, its successor, and the proof limits
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 948-991)
+* [x] Step 7.2: Validate phase changes
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 992-1001)
+
+### [x] Implementation Phase 8: Validation
 
 <!-- parallelizable: false -->
 
-* [ ] Step 8.1: Run full project validation
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 952-961)
-* [ ] Step 8.2: Fix minor validation issues
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 962-965)
-* [ ] Step 8.3: Report blocking issues
-  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 966-976)
+* [x] Step 8.1: Run full project validation
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 1006-1015)
+* [x] Step 8.2: Fix minor validation issues
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 1016-1019)
+* [x] Step 8.3: Report blocking issues
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 1020-1030)
+
+### [x] Implementation Phase 9: Legacy Runtime Retarget
+
+Added after Phase 1 returned a blocked legacy readiness verdict. ID-02 authorized a retarget to .NET Framework 4.8 rather than dropping the legacy comparison app. Runs in wave 1 and must complete before Phase 8.
+
+<!-- parallelizable: true -->
+
+* [x] Step 9.1: Retarget the legacy comparison app to .NET Framework 4.8
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 1037-1072)
+* [x] Step 9.2: Validate phase changes
+  * Details: .copilot-tracking/details/2026-09-22/croesus-bff-private-ingress-details.md (Lines 1073-1084)
 
 ## Planning Log
 
@@ -175,14 +191,15 @@ See .copilot-tracking/plans/logs/2026-09-22/croesus-bff-private-ingress-log.md f
 * Bicep CLI for template compilation
 * .NET 10 SDK for the reference BFF application
 * PowerShell 7 for the verification scripts
-* An approved private network path for both the browser and the deployment runner
+* An App Service plan at B1 or better for the demo, with the understanding that an external process degrades it to F1 on roughly a 24 hour cycle
 * Entra ID P1 or better in the demo tenant for any Conditional Access evaluation
 
 ## Success Criteria
 
-* Public application and SCM ingress remain disabled throughout, and no repository command sets publicNetworkAccess to Enabled — Traces to: user requirement, Azure Policy prohibits public access
-* Each approved app is reachable over its own private endpoint using normal HTTPS hostnames from the actual browser and the deployment runner — Traces to: research Scenario 1 Network and Deployment Contract
-* The enforcing policy assignment is recorded, or its absence is recorded explicitly as unverified — Traces to: research H1 and the policy-versus-ingress distinction
+* Public ingress is restored for the POC as an explicit, parameterized decision rather than undocumented drift, and the superseded policy premise is recorded — Traces to: ID-01 decision and research H1
+* A 403 against either app is diagnosable to one of tier degradation, disabled public ingress, or a stopped site, without guesswork — Traces to: user requirement on the 24 hour F1 degradation cycle
+* The private endpoint design survives as an opt-in module and documented successor rather than being deleted — Traces to: research Scenario 1 Network and Deployment Contract
+* The enforcing policy assignment is recorded, or its absence is recorded explicitly — Traces to: research H1. Met in Phase 1: absence recorded.
 * The legacy app either passes the runtime support gate or its exclusion is recorded with remaining work, rather than being silently dropped — Traces to: research Scope and Success Criteria
 * No OAuth token appears in any browser cookie, proven by a sentinel assertion — Traces to: research H3 and Scenario 2 token custody
 * State-changing proxied operations enforce antiforgery validation, and forwarded requests carry only the server-acquired credential — Traces to: research H4 and Scenario 2 items 1 to 3

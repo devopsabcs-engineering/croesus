@@ -2,7 +2,7 @@
 title: Croesus OBO Demo Guide
 description: Provision, deploy, exercise, and read the evidence for the Croesus mock SaaS On-Behalf-Of flow demo without referencing internal research notes
 author: Croesus Demo Team
-ms.date: 2026-07-28
+ms.date: 2026-09-22
 ms.topic: how-to
 keywords:
   - obo
@@ -185,7 +185,7 @@ BREAK_GLASS_USER_OBJECT_ID="<break-glass-object-id>" \
 ```
 
 > [!IMPORTANT]
-> Token Protection is a Microsoft Entra ID P1 capability, and it evaluates only for native applications reaching Exchange Online, SharePoint Online, or Teams. It does not evaluate the browser SPA to custom API to Graph flow, so the 1008 line appears only for this supported-resource exhibit, never for the Croesus OBO path itself.
+> Token Protection is a Microsoft Entra ID P1 capability. Its generally available scope is native applications reaching Exchange Online, SharePoint Online, or Teams. A preview extends evaluation to browser-based web applications on Windows and macOS, scoped to Azure Resource Manager, and preview coverage is not something to build a control on. Neither surface evaluates the browser SPA to custom API to Graph flow, so the 1008 line appears only for this supported-resource exhibit, never for the Croesus OBO path itself.
 
 ### Step 7c: Enable the replay gates
 

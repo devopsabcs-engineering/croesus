@@ -38,11 +38,26 @@ The ingress architecture is under re-ratification. The plan was written on the p
 * poc/bff-yarp-net10/Tests/AudienceAndScopeTests.cs - 9 audience and scope tests with paired control-removal tests
 * poc/bff-yarp-net10/Tests/EvidenceSurfaceTests.cs - 7 non-disclosure tests
 * poc/bff-yarp-net10/Tests/BffFactory.cs, FakeTokenAcquisition.cs, RecordingDownstream.cs, TestConfiguration.cs, Usings.cs - test host and fakes
+* infra/poc/modules/privateendpoint.bicep - opt-in private endpoint and DNS zone group module, retained as the production-successor design and never instantiated under the POC defaults
+* scripts/verify-ingress.ps1 - discriminating ingress preflight, 403 cause resolution with named remedies, and posture assertion mode
 
 ### Modified
 
 * scripts/provision-app-registrations.sh - BFF confidential registration, API token version 2, API-only optional claims, Key Vault certificate helper
 * scripts/evidence-kql.kusto - speculative queries replaced with operation-mapped, bounded, placeholder-parameterized queries
+* infra/poc/main.bicep - ingress, plan SKU, and BFF hosting parameterized; tier guard, BFF site, conditional endpoint modules, and diagnostic outputs added
+* infra/poc/main.bicepparam - ingress mode, plan SKU, and BFF hosting stated explicitly
+* scripts/provision-classic-net-bff-deployment.ps1 - registration-shape and credential-expiry-metadata preflight assertions before package deployment
+* scripts/test-classic-net-bff-deployment-entra-static.ps1 - Bicep boundary anchors and legacy framework literals repaired after the Phase 2 and Phase 9 changes
+* poc/legacy-net452/LegacyNet452.csproj - retargeted to .NET Framework 4.8, reference assemblies package swapped to the net48 identifier
+* poc/legacy-net452/Tests/LegacyNet452.Tests.csproj - retargeted to .NET Framework 4.8 to track the host project
+* poc/legacy-net452/web.config - compilation and httpRuntime target framework raised to 4.8 to match the project
+* poc/legacy-net452/README.md - target framework corrected and the retained directory name explained
+* .github/workflows/classic-net-bff-poc.yml - BFF build and test added to validate, ingress verification wired around deployment, evidence verdict job added, runner and rollback conditions documented
+* docs/classic-net-bff-poc.md - ingress decision and successor design recorded, 403 diagnosis path added, legacy target corrected to 4.8, caveat matrix rebuilt around two runtimes
+* docs/evidence-narrative.md - Token Protection scope corrected to the GA and preview split, reference BFF boundary bounded
+* docs/configuration-contract.md - BFF_CLIENT_ID, ingressMode, appServicePlanSkuName, and croesus-bff-cert rows added
+* docs/obo-demo-guide.md - same Token Protection preview correction, which appeared here too
 
 ### Removed
 
@@ -396,6 +411,164 @@ Four queries replace the withdrawn set: a run-scoped membership test over observ
 
 `BFF_BASE_URI` defaulted to the `-modern` hostname, which is the existing comparison app rather than the reference BFF. Registering the BFF's `/signin-oidc` there would collide with `modernCallbackUri` at infra/poc/main.bicep line 45 on a different registration object. The default now points at `https://croesus-bff-a3v24wppuvd34-bff.azurewebsites.net` and the variable documentation states which site it refers to and when to override it. `bash -n` re-verified at exit 0 after the edit.
 
+## Phase 2 Ingress Restoration and Successor Design
+
+Rescoped by the ID-01 decision. Public ingress becomes an explicit parameterized choice; the private endpoint design is preserved as an opt-in module the POC defaults never instantiate.
+
+### Ingress is a parameter, not a literal
+
+`ingressMode` accepts `Public` or `Private` and defaults to `Public`. Every site derives `publicNetworkAccess` from it through a single variable, so no site resource carries a literal in either direction. No `ipSecurityRestrictions` rule was added as a substitute for either posture. The parameter comment cites DD-17 so a later reader does not mistake the default for drift.
+
+### The tier is explicit and the template refuses what it cannot honour
+
+`appServicePlanSkuName` defaults to `B1` and replaces the previous `B1`/`Basic` literals, with the tier derived from a lookup map. A deploy-time guard halts provisioning when `ingressMode` is `Private` on `F1` or `D1`, naming both tiers in the message. `alwaysOn` now derives from the tier, because parameterizing the SKU without that coupling produces a template that cannot deploy at the tier this environment keeps drifting to.
+
+### Private endpoints preserved, not deleted
+
+The new module targets the `sites` subresource and attaches a `privateDnsZoneGroups` child covering the `privatelink.azurewebsites.net` zone for both the application and scm hostnames. Three conditional instantiations sit behind `ingressMode == 'Private'` and provision nothing under the defaults. The module header records the two prerequisites this subscription does not satisfy.
+
+### The reference BFF has its own hostname
+
+`deployBffSite` defaults to false and gates a site named `croesus-bff-${uniqueSuffix}-bff`, resolving to `croesus-bff-a3v24wppuvd34-bff.azurewebsites.net`. That matches the `BFF_BASE_URI` default in the registration script exactly, closing the DD-21 collision shape. The BFF outputs derive from variables rather than from the conditional resource, so Phase 4 resolves a concrete redirect URI whether or not hosting exists.
+
+### Validation
+
+`az bicep build` and `az bicep build-params` both exit 0 with no warnings. Compilation confirmed across seven parameter combinations covering both ingress modes, both hosting states, and three SKUs. `Private` plus `F1` compiles by design, because the guard is deploy-time: the combination is expressible in source and unprovisionable in Azure. No `az deployment` command was run and no Azure state changed.
+
+## Phase 5 Provisioning and Verification Scripts
+
+### Four failure classes separated
+
+`scripts/verify-ingress.ps1` distinguishes DNS failure, routing failure, authorization failure, and challenge-shape failure, which previously presented identically. Verdicts are a closed set of `pass`, `fail`, and `not-executed`, and detail codes are allowlisted with anything outside the allowlist clamped to `unspecified`. Headers are inspected in memory and only a `set-cookie-header-present` boolean leaves the script. TLS validation is never relaxed.
+
+### A 403 is resolved to a named cause
+
+Checked in order: plan tier degraded, then public ingress disabled, then site stopped. The first match is reported with one named remedy. The `Web App - Unavailable` body marker is emitted as a corroborating note, never as the determination, so it is not conflated with tier degradation or with a management-plane denial, which is classified separately as `control-plane-read-denied`.
+
+### Posture is asserted, not assumed
+
+Public mode records explicitly that public reachability is the accepted POC posture under ID-01 and emits `this-poc-does-not-demonstrate-private-ingress`. Private mode reports `not-executed` unless the caller asserts an unconnected client, and never treats a public DNS answer as evidence of public application access.
+
+### Preflight assertions before deployment
+
+The deployment script gained a registration-shape assertion after callback convergence and a credential-validity assertion that reads expiry from registration metadata rather than inferring it from a failed sign-in, closing DR-02. A repository-wide search over `scripts/**` and `.github/workflows/**` confirms no imperative `publicNetworkAccess` write anywhere, closing DD-09.
+
+### Defects the subagent caught in its own work
+
+Three first-run defects were found and fixed before reporting: a corroborating note leaking into a function's return value, a public posture check passing on transport reachability while ingress was actually disabled, and a TCP check passing on connection rather than on a validated TLS handshake. The second is precisely the misleading-pass class this phase exists to prevent.
+
+### Live read-only verification
+
+Against the real resource group, the script correctly reported `diagnosis=plan-tier-degraded` with the redeploy remedy while separately reporting `ingress-posture-drift`, because the plan is F1 against a declared B1 and public access is disabled. Both conditions are true and both were surfaced without conflation.
+
+## Phase 9 Legacy Runtime Retarget
+
+### Retarget executed
+
+Both projects and `web.config` moved from .NET Framework 4.5.2 to 4.8, with project and config target values in agreement. 4.8.1 was rejected per ID-02 because it cannot be installed on Windows Server 2016 or 2019. The only package change was `Microsoft.NETFramework.ReferenceAssemblies.net452` to `.net48` at the same pinned version, which is framework-pinned by identifier and has no 4.8-compatible build under the old name.
+
+### Separability preserved
+
+No `.cs` file changed. The retarget is isolated from behavioural change so any later failure is attributable to one or the other. The directory keeps its `legacy-net452` name, documented in both project files and the README rather than renamed, because the path is referenced from workflows, scripts, and docs.
+
+### Validation
+
+Baseline before the change and clean rebuild after both report 0 warnings and 0 errors, so the warning delta is zero. The test suite passes 44 of 44 with the runner reporting `.NETFramework,Version=v4.8`, which independently confirms the retarget took effect rather than the build reusing stale output. The IIS publish layout still emits `bin/` plus a `web.config` carrying `targetFramework="4.8"`.
+
+### Not validated
+
+System.Web hosting under IIS Express was not exercised, and live sign-in behaviour on 4.8 remains unproven. This matters because 4.8 changes SameSite cookie handling relative to 4.5.2. Recorded in the README as a re-verification item rather than asserted.
+
+### Correction applied by the orchestrator
+
+Phase 2 and Phase 9 each broke `scripts/test-classic-net-bff-deployment-entra-static.ps1`, and both subagents reported it rather than reaching outside their file scope. Phase 2 renamed a Bicep description the suite used as a parse anchor; Phase 9 changed the framework literals the suite asserts. The suite had been failing at its first anchor since Phase 2, which silently disabled every credential-safety assertion after that line. Repaired all three: the anchor now terminates the modern block at the new `bffApp` resource rather than at the outputs, and the legacy framework assertions expect 4.8. The suite returns `Deployment Entra static security checks OK` at exit 0.
+
+## Phase 6 Pipeline Wiring
+
+### The BFF now enters CI
+
+`poc/bff-yarp-net10` was not built by CI at all, which meant a regression in the exact security behaviour the evidence story rests on would have shipped undetected. The validate job now builds and tests it.
+
+### Verification runs twice, with different assertions
+
+`verify-ingress.ps1` runs with `-Assertion Posture` before packages land, because no application content exists yet and a challenge-shape assertion there would report an empty site as an authentication defect. It runs with `-Assertion All` after. Expected values come from the template's own `resolvedIngressMode` and `resolvedAppServicePlanSkuName` outputs rather than workflow literals, so the check agrees with the template instead of agreeing with itself.
+
+### Runner decision recorded rather than assumed
+
+`windows-latest` is retained per ID-03, with a comment at the declaration naming the condition that retires the choice: if ingress ever moves to `Private`, a hosted runner cannot reach the app and a VNet-connected runner becomes mandatory.
+
+### Evidence verdicts cannot silently pass
+
+A new `evidence` job reports `pass`, `fail`, or `not-executed` per criterion. Absent inputs resolve to `not-executed`, never to `pass`. Interactive delegated-user criteria are always `not-executed` because this pipeline cannot produce them. Any `not-executed`, including checks the verification script honestly declined, blocks the complete-proof claim without failing the deploy job, so operators are not trained to ignore a permanent red.
+
+### Rollback and teardown confirmed by reading, not by assertion
+
+Neither cleanup script contains `az group delete`, any `az network` call, or any private DNS or VNet operation. Deletion is gated on the `Croesus.ClassicNetBffDeployment.v1` ownership tag and refuses untagged registrations.
+
+### Defects the subagent caught in its own work
+
+`$Matches.count` resolved to the hashtable's own `Count` property rather than the named capture group, which would have reported a wrong count silently; the group was renamed and switched to indexer access. Concatenating two `IDictionaryEnumerator` values is not array concatenation; both were wrapped in `@(...)`.
+
+### Validation
+
+YAML parses and `actionlint` returns exit 0 with no findings. All 18 extracted `pwsh` blocks parse once GitHub expressions are substituted, which is what the runner does before `pwsh` sees them. The evidence job was smoke-tested twice, with all inputs present and with all inputs absent; in the absent case every criterion resolved to `not-executed` and none to `pass`. No live workflow run and no `az deployment` was triggered.
+
+## Phase 7 Documentation Correction
+
+### The ingress decision is documented as a decision
+
+The docs now state that the POC runs on public ingress by explicit choice under ID-01, record both reasons, and describe private ingress as the production-successor design shipped as a never-instantiated opt-in module. `docs/classic-net-bff-poc.md` states explicitly that private ingress is not a property this POC demonstrates. Neither distortion was introduced: nothing claims the POC proves private ingress, and nothing presents public ingress as a recommended end state.
+
+### Token Protection corrected in two files
+
+The wording now splits the native-application scope, which is generally available, from the browser-based web application scope, which is preview. The same stale claim was found in `docs/obo-demo-guide.md` and corrected there rather than left to contradict the narrative.
+
+### Configuration contract completed
+
+Four rows added, closing WI-15. Parameter names, allowed values, and defaults were each verified against `infra/poc/main.bicep` and `scripts/provision-app-registrations.sh` rather than transcribed from the plan.
+
+### The comparison table was rebuilt, not find-and-replaced
+
+The caveat matrix presented 4.5.2 and a 4.8 bridge as separate columns. Both sides are now 4.8, so the distinction it drew no longer exists and the matrix was restructured from three columns to two.
+
+### Claims the subagent drafted and then falsified against source
+
+Two statements were written and withdrawn after checking: that the BFF is scoped to the modern comparison host, contradicted by an empty `AllowedDestinationOrigins` and a cluster with no destinations in `appsettings.json`; and that 56 tests cover the custody boundary, when 56 is the whole-application count and 6 are custody-specific. Both were rewritten to what the source supports.
+
+### Residual references checked rather than assumed clean
+
+Fifteen remaining `4.5.2` and `net452` matches were each classified: five are real directory, project, and assembly names, one is an evidence host label, six are deliberate historical statements about the prior target and the SameSite delta, and three describe the customer's system rather than this sample.
+
+### Validation
+
+Editor diagnostics are clean across all four files. Structural checks pass for tabs, trailing whitespace, and fence balance. Markdown linting is **not-executed**: the repository has no lint script and no `.markdownlint.json`, and the configured npm registry refuses remote package fetches with `EALLOWREMOTE`.
+
+## Phase 8 Validation
+
+Run by the orchestrator across everything the plan touched, not only the files changed in the final phase.
+
+| Check | Command | Verdict |
+|---|---|---|
+| Main template compiles | `az bicep build --file infra/poc/main.bicep` | exit 0 |
+| Private endpoint module compiles | `az bicep build --file infra/poc/modules/privateendpoint.bicep` | exit 0 |
+| Parameter file compiles | `az bicep build-params --file infra/poc/main.bicepparam` | exit 0 with the deployment secret present |
+| BFF tests | `dotnet test poc/bff-yarp-net10/Tests/` | Failed 0, Passed 56 |
+| Legacy tests on the new target | `dotnet test poc/legacy-net452/Tests/` | Failed 0, Passed 44, runner reports net48 |
+| API tests, regression guard | `dotnet test api/Tests/` | Failed 0, Passed 19, Skipped 4 |
+| Entra static security suite | `pwsh ./scripts/test-classic-net-bff-deployment-entra-static.ps1` | OK, exit 0 |
+| Provisioning credential-safety suite | `pwsh ./scripts/test-provision-classic-net-bff-poc-static.ps1` | OK, exit 0 |
+| Shell syntax | `bash -n scripts/provision-app-registrations.sh` | exit 0 |
+| PowerShell parse, three modified scripts | `Parser::ParseFile` | errors=0 on each |
+| Workflow YAML | `yaml.safe_load` over `.github/workflows/*.yml` | parses |
+
+### The one reported error is correct behaviour
+
+Editor diagnostics report a compile error on `infra/poc/main.bicepparam` line 8: `CROESUS_DEPLOYMENT_CLIENT_SECRET` has no value and no default. This is the intended design. A deployment secret with a default would be a credential-handling defect, so the parameter file is meant to fail closed when the variable is absent. With the variable set, the file compiles at exit 0. No fix applied.
+
+### Step 8.3: no blocking issues
+
+Every phase reported Complete. The one regression discovered mid-flight, DD-22, was repaired and re-verified rather than carried forward.
+
 ## Additional or Deviating Changes
 
 * Phase 1 falsified the plan's founding premise rather than confirming it
@@ -414,3 +587,35 @@ Four queries replace the withdrawn set: a run-scoped membership test over observ
   * The bypass-prevention requirement is recorded independently of that verdict.
 
 ## Release Summary
+
+Nine phases, all complete. The plan changed shape twice during execution, both times because implementation contradicted a premise that planning had accepted.
+
+### What this work actually delivers
+
+A reference BFF that keeps tokens server-side, proven by tests rather than asserted by documentation; an ingress posture that is now an explicit parameter with a deploy-time guard instead of a literal nobody could explain; a verification script that tells four previously identical failures apart and resolves a 403 to one named cause; a CI pipeline that builds the BFF it depends on and reports evidence verdicts that cannot silently pass; a legacy comparison app on a supported framework; and documentation that states what the POC does not prove.
+
+### The two premise failures
+
+The plan was titled for private ingress. Phase 1 established that no Azure Policy in this tenant prohibits public network access, across six subscription-scope and six tenant-root assignments with an empty exemption list. The disabled state was operator convention. Separately, the App Service plan degrades from B1 to F1 on roughly a 24 hour cycle, and F1 supports neither private endpoints nor VNet integration, so the private design could not have survived in this subscription even had the policy premise held. The design was preserved as an opt-in module rather than deleted, and documented as the production successor.
+
+The second was smaller and caught late: Phase 1 recorded the modern comparison app's hostname as the reference BFF origin, and Phase 4 inherited it. Two registration objects would have claimed one redirect URI.
+
+### Files affected
+
+37 added, 12 modified, 0 removed.
+
+Added: 28 files under `poc/bff-yarp-net10/` comprising the reference BFF and its 56 tests, plus `infra/poc/modules/privateendpoint.bicep` and `scripts/verify-ingress.ps1`.
+
+Modified: `infra/poc/main.bicep` and `main.bicepparam`; `scripts/provision-app-registrations.sh`, `provision-classic-net-bff-deployment.ps1`, `test-classic-net-bff-deployment-entra-static.ps1`, `evidence-kql.kusto`; `.github/workflows/classic-net-bff-poc.yml`; `docs/classic-net-bff-poc.md`, `evidence-narrative.md`, `configuration-contract.md`, `obo-demo-guide.md`; and four files under `poc/legacy-net452/`.
+
+### Infrastructure and dependency changes
+
+No Azure resource was created, modified, or deleted by this work. Every Azure interaction was read-only. `infra/poc/main.bicep` gained three parameters, a deploy-time guard, a conditional BFF site, three conditional private endpoint modules, and four diagnostic outputs, none of which have been deployed. One NuGet identifier changed, from the net452 reference assemblies package to the net48 one, which is framework-pinned by name and has no 4.8 build under the old identifier.
+
+### Deployment notes
+
+The plan is F1 today. Deploying `main.bicep` at its `B1` default will restore the tier, and the 24 hour degradation means this is a recurring operational need rather than a one-time fix, tracked as WI-16. A 403 after degradation is diagnosable: run `scripts/verify-ingress.ps1`, which checks tier degradation, then disabled public ingress, then a stopped site, and reports the first match with a named remedy. `CROESUS_DEPLOYMENT_CLIENT_SECRET` must be present in the environment or the parameter file fails closed by design.
+
+### What remains unproven
+
+No delegated-user sign-in was performed, so no interactive evidence exists and the CI evidence job correctly reports those criteria as `not-executed`. The reference BFF has never been hosted; `deployBffSite` defaults to false. The retargeted legacy app was never exercised under IIS, and because 4.8 changes SameSite cookie handling relative to 4.5.2, earlier sign-in observations do not carry forward. The BFF does not front the legacy app; Step 1.4 returned an out-of-scope verdict and Step 3.7 executed its blocked branch. No artifact claims otherwise.

@@ -1,17 +1,24 @@
 ---
-title: Legacy .NET Framework 4.5.2 BFF proof
+title: Legacy .NET Framework 4.8 BFF proof
 description: Build and IIS Express guidance for the Katana authorization-code and PKCE comparison host
-ms.date: 2026-08-08
+ms.date: 2026-09-22
 ms.topic: how-to
 ---
 
 ## Purpose
 
 This project proves confidential authorization-code redemption with native
-Katana PKCE on classic ASP.NET and .NET Framework 4.5.2. It is protocol
-feasibility code on an unsupported runtime, not a production recommendation.
-Retarget to .NET Framework 4.8 for a supported operational bridge or migrate to
-.NET 10 for the strategic destination.
+Katana PKCE on classic ASP.NET and .NET Framework 4.8. It originally targeted
+4.5.2, which left support in April 2022. The retarget to 4.8 restores a
+supported runtime without altering the authentication code paths, so this host
+remains the legacy half of the two-app comparison. 4.8 is in-box on App Service
+Windows, which makes it an operational bridge rather than the strategic
+destination. Migrate to .NET 10 for that.
+
+The folder is still named `legacy-net452` and the assembly and namespace still
+read `LegacyNet452`, because deployment scripts and workflow definitions outside
+this folder reference those names. The target framework is 4.8 regardless of
+what the names suggest.
 
 The browser receives an HTTP-only session cookie and a small identity
 projection. OAuth tokens, authorization codes, PKCE verifiers, client
@@ -81,5 +88,6 @@ still selected, but manager substitution alone was insufficient because both
 managers ultimately mutate System.Web-backed response headers. Cookie and OIDC
 middleware are explicitly grouped at `AuthenticateRequest` so callback cookie
 grant application does not occur during late pipeline teardown. Validate
-SameSite behavior on the exact supported browser set because .NET Framework
-4.5.2 predates current browser semantics.
+SameSite behavior on the exact supported browser set. The 4.8 retarget picks up
+framework SameSite handling that 4.5.2 lacked, so re-verify rather than assuming
+earlier observations still hold.

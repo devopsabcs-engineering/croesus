@@ -99,11 +99,14 @@ $legacyResourceIndex = $bicepSource.IndexOf(
 $modernResourceIndex = $bicepSource.IndexOf(
     "resource modernApp 'Microsoft.Web/sites@2025-03-01'",
     [System.StringComparison]::Ordinal)
+$bffResourceIndex = $bicepSource.IndexOf(
+    "resource bffApp 'Microsoft.Web/sites@2025-03-01'",
+    [System.StringComparison]::Ordinal)
 $outputIndex = $bicepSource.IndexOf(
-    "@description('Name of the shared Windows B1 App Service plan.')",
+    "@description('Name of the shared Windows App Service plan.')",
     [System.StringComparison]::Ordinal)
 if ($legacyResourceIndex -lt 0 -or $modernResourceIndex -le $legacyResourceIndex -or
-    $outputIndex -le $modernResourceIndex) {
+    $bffResourceIndex -le $modernResourceIndex -or $outputIndex -le $bffResourceIndex) {
     throw 'The Bicep App Service resource boundaries could not be identified.'
 }
 $legacyResourceSource = $bicepSource.Substring(
@@ -111,7 +114,7 @@ $legacyResourceSource = $bicepSource.Substring(
     $modernResourceIndex - $legacyResourceIndex)
 $modernResourceSource = $bicepSource.Substring(
     $modernResourceIndex,
-    $outputIndex - $modernResourceIndex)
+    $bffResourceIndex - $modernResourceIndex)
 if ($legacyResourceSource.Contains('use32BitWorkerProcess')) {
     throw 'The legacy App Service worker bitness must remain unchanged.'
 }
@@ -135,16 +138,16 @@ $bindingRedirect = $newtonsoftAssembly.SelectSingleNode(
 if ($null -eq $bindingRedirect) {
     throw 'The legacy web.config must redirect Newtonsoft.Json versions through 13.0.0.0.'
 }
-if ($legacyWebConfig.configuration.'system.web'.compilation.targetFramework -cne '4.5.2' -or
+if ($legacyWebConfig.configuration.'system.web'.compilation.targetFramework -cne '4.8' -or
     $legacyWebConfig.configuration.'system.web'.customErrors.mode -cne 'On') {
-    throw 'The legacy binding redirect must preserve net452 and customErrors mode On.'
+    throw 'The legacy binding redirect must preserve net48 and customErrors mode On.'
 }
 $legacyHttpRuntime = $legacyWebConfig.SelectSingleNode('/configuration/system.web/httpRuntime')
 if ($null -eq $legacyHttpRuntime -or
-    $legacyHttpRuntime.targetFramework -cne '4.5.2' -or
+    $legacyHttpRuntime.targetFramework -cne '4.8' -or
     $legacyHttpRuntime.maxQueryStringLength -cne '8192' -or
     $legacyHttpRuntime.Attributes.Count -ne 2) {
-    throw 'The legacy httpRuntime must bound maxQueryStringLength at 8192 and preserve net452.'
+    throw 'The legacy httpRuntime must bound maxQueryStringLength at 8192 and preserve net48.'
 }
 
 $legacyRequestLimits = $legacyWebConfig.SelectSingleNode(

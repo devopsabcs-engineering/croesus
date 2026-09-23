@@ -2,7 +2,7 @@
 title: Croesus Demo Configuration Contract
 description: Single source-of-truth catalog of every public (non-secret) configuration value for the Croesus mock SaaS OBO-flow demo and the consumer that reads it
 author: Croesus Demo Team
-ms.date: 2026-07-28
+ms.date: 2026-09-22
 ms.topic: reference
 keywords:
   - configuration
@@ -44,6 +44,14 @@ Each row below names one value, where it is defined, and every component that re
 | Raw-token inspector toggle | `VITE_ENABLE_TOKEN_INSPECTOR` | Fixed convention in this contract, default `false` | `VITE_ENABLE_TOKEN_INSPECTOR` | not used | not used | `vars.ENABLE_TOKEN_INSPECTOR` |
 | SPA Graph delegated scope | `VITE_GRAPH_SCOPE` | Fixed convention in this contract, default `User.Read` | `VITE_GRAPH_SCOPE` | not used | not used | `vars.VITE_GRAPH_SCOPE` |
 | Microsoft Graph base URL | `VITE_GRAPH_BASE_URL` | Fixed convention in this contract, optional, default `https://graph.microsoft.com/v1.0` | `VITE_GRAPH_BASE_URL` | not used | not used | `vars.VITE_GRAPH_BASE_URL` |
+| Reference BFF (confidential client) app registration ID | `BFF_CLIENT_ID` | `provision` script output, stored as repo variable | not used | not used | not used | `vars.BFF_CLIENT_ID` |
+| Comparison PoC ingress posture | `ingressMode` | [../infra/poc/main.bicepparam](../infra/poc/main.bicepparam), `Public` or `Private`, default `Public` | not used | not used | `ingressMode` | not used |
+| Comparison PoC App Service plan SKU | `appServicePlanSkuName` | [../infra/poc/main.bicepparam](../infra/poc/main.bicepparam), default `B1` | not used | not used | `appServicePlanSkuName` | not used |
+
+> [!NOTE]
+> `BFF_CLIENT_ID` belongs to the reference back-end-for-frontend in [../poc/bff-yarp-net10](../poc/bff-yarp-net10), which is a separate registration from the API and the SPA. Its redirect URIs are derived from `BFF_BASE_URI` in [../scripts/provision-app-registrations.sh](../scripts/provision-app-registrations.sh), whose default names the dedicated BFF site rather than the existing comparison apps. `ingressMode` and `appServicePlanSkuName` govern the comparison PoC in [../infra/poc/main.bicep](../infra/poc/main.bicep) only; neither reaches the SPA or the API. Private ingress requires `B1` or better, and the template refuses the combination at deploy time on `F1` or `D1`.
+
+<!-- -->
 
 > [!NOTE]
 > The active scope-enforcement path is the `[RequiredScope("access_as_user")]` attribute on the API controllers ([../api/Controllers/MeController.cs](../api/Controllers/MeController.cs) and [../api/Controllers/ReplayController.cs](../api/Controllers/ReplayController.cs)), which rejects a token that lacks the `access_as_user` scope with `403`. The `AzureAd:Scopes` app setting in the table above is not read by the API code and is not the mechanism that enforces the scope; treat it as configuration metadata, not the control.
@@ -69,6 +77,7 @@ The following value is a credential. It is managed exclusively in Key Vault and 
 | Config value | Canonical identifier | Source of truth | Consumer | Exposure rule |
 | --- | --- | --- | --- | --- |
 | API confidential-client certificate | `croesus-api-cert` | Key Vault only | API reads it via App Service Key Vault reference and managed identity | Key Vault only. Never `vars.*`, never the repository, never `.bicepparam`, never the workflow |
+| Reference BFF confidential-client certificate | `croesus-bff-cert` | Key Vault only, created and attached by [../scripts/provision-app-registrations.sh](../scripts/provision-app-registrations.sh) | Reference BFF confidential-client credential on the `BFF_CLIENT_ID` registration | Key Vault only. The private key never leaves the vault. Never `vars.*`, never the repository, never `.bicepparam`, never the workflow |
 | CI test service principal app ID | `TEST_SP_CLIENT_ID` | CI test identity, stored as a GitHub Actions secret | `negative-test.sh` (client-credentials grant for the Graph-audience token) via the `evidence` job | GitHub Actions secret only. Never `vars.*`, never the repository |
 | CI test service principal secret | `TEST_SP_CLIENT_SECRET` | CI test identity, stored as a GitHub Actions secret | `negative-test.sh` via the `evidence` job | GitHub Actions secret only |
 | CI test user UPN (non-MFA) | `TEST_USERNAME` | Dedicated CI test user, stored as a GitHub Actions secret | `smoke-test.sh` / `negative-test.sh` ROPC token A acquisition | GitHub Actions secret only |

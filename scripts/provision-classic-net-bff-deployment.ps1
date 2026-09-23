@@ -128,6 +128,76 @@ function Assert-DeploymentCallbackUri {
     return $parsedUri.AbsoluteUri
 }
 
+function Assert-RegistrationPreflight {
+    param(
+        [Parameter(Mandatory)][string]$ObjectId,
+        [Parameter(Mandatory)][string[]]$ExpectedRedirectUris,
+        [Parameter(Mandatory)][string]$ExpectedSignInAudience
+    )
+
+    $registration = Invoke-Graph `
+        -Method GET `
+        -Uri "$graphBaseUri/applications/$($ObjectId)?`$select=id,appId,signInAudience,isFallbackPublicClient,web,spa"
+    $observedRedirectUris = @()
+    if ($null -ne $registration.web -and $null -ne $registration.web.redirectUris) {
+        $observedRedirectUris = @($registration.web.redirectUris | ForEach-Object { [string]$_ })
+    }
+
+    $missingRedirectUris = @($ExpectedRedirectUris | Where-Object { $_ -cnotin $observedRedirectUris })
+    if ($missingRedirectUris.Count -gt 0) {
+        throw "The registration does not carry every deployment callback URI. Package deployment would produce a challenge that cannot complete. Missing: $($missingRedirectUris -join ', ')"
+    }
+    if ([string]$registration.signInAudience -cne $ExpectedSignInAudience) {
+        throw "The registration sign-in audience is '$([string]$registration.signInAudience)' but the deployment expects '$ExpectedSignInAudience'."
+    }
+    if ([bool]$registration.isFallbackPublicClient) {
+        throw 'The registration is treated as a public client. A confidential web deployment must not proceed against it.'
+    }
+    $spaRedirectUris = @()
+    if ($null -ne $registration.spa -and $null -ne $registration.spa.redirectUris) {
+        $spaRedirectUris = @($registration.spa.redirectUris)
+    }
+    if ($spaRedirectUris.Count -gt 0) {
+        throw 'The registration exposes single-page application redirect URIs. The confidential web platform must be the only one configured.'
+    }
+}
+
+function Assert-DeploymentCredentialValidity {
+    param(
+        [Parameter(Mandatory)][string]$ObjectId,
+        [Parameter(Mandatory)][string]$KeyId,
+        [Parameter(Mandatory)][int]$MinimumRemainingMinutes
+    )
+
+    # Expiry is read from registration metadata. Inferring it from a failed sign-in cannot separate an
+    # expired credential from an unreachable endpoint, which is how the original diagnosis went wrong.
+    $registration = Invoke-Graph `
+        -Method GET `
+        -Uri "$graphBaseUri/applications/$($ObjectId)?`$select=passwordCredentials"
+    $credentialMetadata = @($registration.passwordCredentials | Where-Object {
+            [string]$_.keyId -ceq $KeyId
+        })
+    if ($credentialMetadata.Count -ne 1) {
+        throw 'The rotated deployment credential is not visible in registration metadata. Package deployment must not start against an unverified credential.'
+    }
+
+    $endDateTime = [DateTimeOffset]::MinValue
+    if (-not [DateTimeOffset]::TryParse(
+            [string]$credentialMetadata[0].endDateTime,
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::RoundtripKind,
+            [ref]$endDateTime)) {
+        throw 'The deployment credential metadata does not carry a parseable expiry.'
+    }
+
+    $remainingMinutes = [int]($endDateTime - [DateTimeOffset]::UtcNow).TotalMinutes
+    if ($remainingMinutes -lt $MinimumRemainingMinutes) {
+        throw "The deployment credential has $remainingMinutes minute(s) of validity left, below the $MinimumRemainingMinutes minute preflight margin. Re-run provisioning instead of starting a deployment that expires mid-flight."
+    }
+
+    return $endDateTime
+}
+
 function Save-State {
     $script:state | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $script:fullStatePath -Encoding utf8NoBOM
 }
@@ -249,6 +319,15 @@ $patchBody = @{
 Write-Status 'Converging the confidential web callback platform'
 Invoke-Graph -Method PATCH -Uri "$graphBaseUri/applications/$applicationObjectId" -Body $patchBody | Out-Null
 
+# Preflight. A package deployment against a registration that is missing a callback, exposes the
+# wrong platform, or targets the wrong audience fails at the first sign-in rather than at publish,
+# where the symptom no longer names the cause.
+Write-Status 'Preflight: asserting the registration shape the deployment depends on'
+Assert-RegistrationPreflight `
+    -ObjectId $applicationObjectId `
+    -ExpectedRedirectUris $redirectUris `
+    -ExpectedSignInAudience $signInAudience
+
 $servicePrincipalQuery = "$graphBaseUri/servicePrincipals?`$filter=appId eq '$applicationId'&`$select=id,appId"
 $servicePrincipalResponse = Invoke-Graph -Method GET -Uri $servicePrincipalQuery
 $servicePrincipalMatches = @($servicePrincipalResponse.value)
@@ -324,4 +403,10 @@ foreach ($priorCredential in $priorSameNameCredentials) {
 
 $credential.secretText = $null
 $secretText = $null
+
+$credentialExpiresOn = Assert-DeploymentCredentialValidity `
+    -ObjectId $applicationObjectId `
+    -KeyId $newCredentialKeyId `
+    -MinimumRemainingMinutes 30
+Write-Status "Preflight: registration metadata reports the deployment credential valid until $($credentialExpiresOn.ToUniversalTime().ToString('u'))."
 Write-Status "Provisioning complete. The masked secret is available only in process environment variable $SecretEnvironmentVariableName."

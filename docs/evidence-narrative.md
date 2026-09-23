@@ -2,7 +2,7 @@
 title: Croesus OBO Evidence Narrative
 description: Maps the Desjardins escalation-packet questions to the concrete evidence the mock OBO demo produces and explains why audience-binding is the headline proof
 author: Croesus Demo Team
-ms.date: 2026-08-05
+ms.date: 2026-09-22
 ms.topic: concept
 keywords:
   - obo
@@ -44,7 +44,12 @@ This is strong evidence because it is intrinsic to the protocol: a single reused
 
 The original analysis observed the blocked event as a Token Protection "unbound" signal, event code 1008. It is tempting to make code 1008 the centerpiece, but presenting it as the OBO proof would be technically incorrect for this application shape and would undermine credibility with a security-literate customer.
 
-Token Protection token binding, and therefore the 1008 "unbound" signal, applies to native-application clients reaching specific resources: Exchange Online, SharePoint Online, and Teams. It does not fire for a browser-based SPA calling a custom API that then calls Microsoft Graph. Asserting 1008 as the OBO proof for this app shape would claim a signal the platform does not emit here.
+Token Protection token binding, and therefore the 1008 "unbound" signal, does not cover Microsoft Graph. Its generally available scope is native-application clients reaching Exchange Online, SharePoint Online, and Teams. A preview extends evaluation to browser-based web applications on Windows and macOS, scoped to Azure Resource Manager. Neither surface reaches a browser SPA that calls a custom API that then calls Microsoft Graph, so asserting 1008 as the OBO proof for this application shape would claim a signal the platform does not emit here.
+
+> [!IMPORTANT]
+> The browser-based web application coverage is in preview. Treat it as a direction of travel, not as an available control, and do not design a Conditional Access requirement around it.
+
+A sign-in status code reports the outcome of a policy evaluation. It does not name the grant the client used, so no status code on its own separates an On-Behalf-Of exchange from a forwarded token. The audience pair does that work, and nothing in the log schema substitutes for it.
 
 Tier 2b reproduces the customer's exact telemetry on the terms the platform supports. It stands up a report-only Conditional Access Token Protection policy (a Microsoft Entra ID P1 capability) scoped to a native mobile-and-desktop client reaching Exchange Online, then reads the resulting `signInSessionStatusCode == "1008"` from the non-interactive sign-in logs (Query 4 in [../scripts/evidence-kql.kusto](../scripts/evidence-kql.kusto)). Report-only mode records the binding evaluation without blocking anyone, so the exhibit is safe to run and trivial to reverse. This is the real 1008, obtained on a supported resource, and it stays clearly separate from the OBO proof.
 
@@ -69,7 +74,17 @@ Microsoft Entra enforces the distinction at the token endpoint. A `spa` authoriz
 
 If Croesus's reported backend redemption is confirmed, Central's Prod success leaves two explanations: the backend synthesises an `Origin` header on a server-to-server call, or it authenticates as a **`web` registration outside the three exports we hold**. The decisive artifacts are a captured `/token` request, the complete Q8 registration inventory, and the Q15 component-boundary evidence. A confirmed backend redeemer should use a `web`-platform confidential client, provable first with a client secret and hardened afterwards with a certificate credential.
 
-One guard belongs alongside this verdict: `1008` is out of Token Protection scope for any flow reaching Microsoft Graph and is not replay evidence. Token Protection supports native applications only and does not cover Microsoft Graph, so an `Unbound (1008)` line against a sign-in that later reaches Graph is expected and benign. Keep that statement in view so the analysis does not drift back to treating `1008` as proof of token replay.
+One guard belongs alongside this verdict: `1008` is out of Token Protection scope for any flow reaching Microsoft Graph and is not replay evidence. Microsoft Graph falls under neither the generally available native-application scope nor the preview browser-based web application scope, so an `Unbound (1008)` line against a sign-in that later reaches Graph is expected and benign. It is also an evaluation outcome rather than a grant classification, so it cannot identify which OAuth flow produced the sign-in. Keep that statement in view so the analysis does not drift back to treating `1008` as proof of token replay.
+
+## What the reference BFF changes, and what it does not
+
+A reference back-end-for-frontend lives in [../poc/bff-yarp-net10](../poc/bff-yarp-net10). Its one security claim is token custody. `SaveTokens` is false and the cookie authentication handler is given a distributed `ITicketStore`, so the browser holds an opaque session reference while the tokens stay server-side. The application carries 56 passing tests, 6 of them on custody specifically, including one that decrypts the issued cookie and asserts it carries only a session reference rather than asserting a configuration flag.
+
+Reducing token exposure is not the same as changing the protocol. The BFF narrows where a token can be observed; it does not alter the audience, the issuer, or the type of the token the downstream leg receives. A correct OBO exchange behind a BFF is still an OBO exchange, and a forwarded token behind a BFF is still a forwarded token. The audience-boundary evidence above decides the case either way.
+
+Two boundaries limit what this reference application demonstrates. It forwards a single `/api` route to one configured downstream, and its destination allowlist is empty until deployment supplies it, so the application ships pointing at nothing in particular. No bridge to the classic .NET Framework host was built, and nothing in this repository should be read as claiming one exists. The site is also not hosted by default, because `deployBffSite` in [../infra/poc/main.bicep](../infra/poc/main.bicep) is false. Its hostname, `croesus-bff-a3v24wppuvd34-bff.azurewebsites.net`, is a reserved name the registration can claim rather than a running endpoint.
+
+These properties are independent of network posture. Server-side token custody, audience validation, and the delegated-scope policy behave identically whether a site is reachable publicly or through a private endpoint. The comparison PoC runs on public ingress by explicit decision, recorded in [classic-net-bff-poc.md](classic-net-bff-poc.md), and that choice neither strengthens nor weakens any conclusion in this document.
 
 ## Reversibility and residual token validity
 

@@ -1,33 +1,53 @@
 ---
 title: Classic .NET BFF Comparison PoC
-description: Provision and run the .NET Framework 4.5.2 and .NET 10 confidential web client comparison
-ms.date: 2026-08-07
+description: Provision and run the .NET Framework 4.8 and .NET 10 confidential web client comparison
+ms.date: 2026-09-22
 ms.topic: how-to
 ---
 
 ## Purpose and recommendation
 
 This proof compares the same confidential OpenID Connect web-client boundary on
-two runtimes. The .NET Framework 4.5.2 host establishes protocol feasibility
-with Katana. The .NET 10 host demonstrates the supported strategic destination
-with Microsoft.Identity.Web and MSAL.NET.
+two runtimes. The classic host establishes protocol feasibility with Katana on
+.NET Framework 4.8. The .NET 10 host demonstrates the supported strategic
+destination with Microsoft.Identity.Web and MSAL.NET.
 
 Use the sequence below for Central:
 
-1. Prove the confidential `web` registration in Dev on .NET Framework 4.5.2.
-2. Use .NET Framework 4.8 only as an operational bridge when migration timing
-   requires one.
+1. Prove the confidential `web` registration in Dev on .NET Framework 4.8,
+   which is the in-box runtime on Windows App Service.
+2. Treat 4.8 as an operational bridge while migration timing requires one, not
+   as a destination.
 3. Move the authentication boundary to .NET 10 as the strategic destination.
 
 > [!WARNING]
-> .NET Framework 4.5.2 has been unsupported since April 26, 2022. The legacy
-> sample is evidence code, not an Internet-facing or production destination.
+> The classic sample originally targeted .NET Framework 4.5.2, which left
+> support on April 26, 2022. It now targets 4.8. The sample remains evidence
+> code, not an Internet-facing or production destination.
 
-Installing the .NET Framework 4.8 runtime does not change an application's
-target framework. A 4.8 uplift requires retargeting the project, recompiling it,
-and regression testing authentication, cookies, session state, TLS behavior,
-and the application. Treat installation and application migration as separate
-changes.
+The retarget changed `TargetFrameworkVersion` in the host and test projects and
+raised the `web.config` compilation and `httpRuntime` targets to 4.8. No `.cs`
+file changed, so a later behavioral failure is attributable to one change or the
+other rather than to both at once. A clean rebuild reports zero warnings and
+zero errors against the pre-change baseline, and the test suite passes 44 of 44
+with the runner reporting `.NETFramework,Version=v4.8`.
+
+Two things the retarget did not establish. System.Web hosting under IIS was
+never exercised, and interactive sign-in on 4.8 remains unverified. That gap
+matters: 4.8 changes SameSite cookie handling relative to 4.5.2, so sign-in
+observations recorded on the earlier target do not carry forward untested.
+Re-run the browser comparison before citing it as 4.8 evidence.
+
+The project directory keeps the name `poc/legacy-net452`, and the assembly and
+namespace still read `LegacyNet452`, because workflows, scripts, and
+documentation outside that folder reference those names. The target framework is
+4.8 regardless of what the names suggest.
+
+Installing a .NET Framework runtime is still not the same operation as
+retargeting an application. A runtime uplift on its own leaves the target
+framework untouched. Retargeting requires recompilation and regression testing
+of authentication, cookies, session state, and TLS behavior. Keep the two
+changes separate when planning Central.
 
 The [three-way session findings](../assets/croesus-3way-session-findings.md)
 remain the authoritative Central assessment. This PoC implements the R8 and R9
@@ -73,7 +93,7 @@ scope or implements On-Behalf-Of.
 * PowerShell 7 on Windows
 * Azure CLI authenticated to the intended home tenant
 * Permission to create applications and service principals in that tenant
-* .NET SDK 10 with .NET Framework 4.5.2 reference assemblies restored by NuGet
+* .NET SDK 10 with .NET Framework 4.8 reference assemblies restored by NuGet
 * Visual Studio with IIS Express and a trusted development certificate for the
   legacy host
 
@@ -178,11 +198,11 @@ parameter, deploys both packages, and checks each root URL without following
 redirects. The smoke check accepts an authentication redirect or `401`; it does
 not complete an interactive user sign-in.
 
-The legacy package remains compiled for .NET Framework 4.5.2. Windows App
-Service runs that assembly on its installed .NET Framework 4.8 runtime. The
-modern package is a self-contained `win-x64` deployment with
-`Croesus.ModernBff.exe` as its startup command, so it does not depend on App
-Service offering a shared .NET 10 runtime.
+The legacy package is compiled for .NET Framework 4.8, which is the in-box
+runtime on the Windows App Service worker, so the compile target and the
+execution runtime now agree. The modern package is a self-contained `win-x64`
+deployment with `Croesus.ModernBff.exe` as its startup command, so it does not
+depend on App Service offering a shared .NET 10 runtime.
 
 ### Understand credential rotation
 
@@ -198,6 +218,85 @@ removes older credentials with that deterministic name. Rerun deploy before the
 credential expires to rotate it. The two app settings are updated together by
 the same Bicep deployment, but this remains a PoC exception rather than a
 production key-synchronization design.
+
+### Understand the ingress posture
+
+This PoC runs on public ingress by explicit decision. The work that produced the
+current templates began from the premise that Azure Policy prohibits public
+network access on `Microsoft.Web/sites` in this tenant. A read-only policy audit
+withdrew that premise: no assignment enforces `publicNetworkAccess` on
+`Microsoft.Web/sites` at any reachable scope, across six subscription-scope
+assignments and six tenant-root management-group assignments, with an empty
+exemption list. The tenant does apply that governance pattern to storage
+accounts, Key Vault, Cosmos DB, Azure SQL, and AI Foundry hubs, but App Service
+was never brought into it. The disabled state observed on the deployed sites
+therefore reads as an operator convention rather than a policy outcome.
+
+Ingress is a parameter, not a literal. `ingressMode` in
+[../infra/poc/main.bicep](../infra/poc/main.bicep) accepts `Public` or `Private`
+and defaults to `Public`, and every site derives `publicNetworkAccess` from that
+single value. No site carries a hard-coded posture in either direction.
+
+Private ingress is the production-successor design. It is not a property this
+PoC demonstrates. It ships as an opt-in module,
+[../infra/poc/modules/privateendpoint.bicep](../infra/poc/modules/privateendpoint.bicep),
+which the PoC defaults never instantiate. Two prerequisites stand between the
+module and a working deployment, and this subscription supplies neither:
+
+* An App Service plan that stays at B1 or better. `F1` and `D1` support neither
+  private endpoints nor regional VNet integration, and a deploy-time guard halts
+  provisioning when `ingressMode` is `Private` on either tier.
+* A same-region virtual network with a linked `privatelink.azurewebsites.net`
+  private DNS zone. No such zone exists anywhere in the subscription, and the
+  only candidate VNet sits in a different region from these sites.
+
+Read this as a hosting decision, not as a security finding in either direction.
+Public ingress here is not a recommendation for production, and the absence of
+an enforcing policy is not an argument against private ingress. The evidence
+this repository produces about confidential-client redemption and token custody
+does not depend on the network posture at all.
+
+### Diagnose a 403 from a deployed app
+
+An external process returns this subscription's App Service plan to `F1` on
+roughly a 24 hour cycle, so the most frequent cause of a 403 is tier degradation
+rather than anything about authentication. Three unrelated conditions produce
+the identical status: the plan degraded below the declared SKU, public ingress
+is disabled while the template declares `Public`, or the site is stopped.
+
+Run the verification script rather than choosing between them by inspection. It
+checks those conditions in that order and reports the first match with one named
+remedy:
+
+```powershell
+pwsh .\scripts\verify-ingress.ps1 `
+  -ResourceGroupName <name-prefix>-rg `
+  -AppName <name-prefix>-<unique-suffix>-modern `
+  -ExpectedClientId <application-client-guid>
+```
+
+A `Web App - Unavailable` title in the response body is the disabled-ingress
+signature specifically. The script emits it as a corroborating note and never as
+the determination, because a management-plane read denial and a degraded tier
+reach the operator as the same 403.
+
+When the diagnosis is tier degradation, redeploy the template to restore the
+declared SKU. Rerun the `classic-net-bff-poc` workflow with `operation: deploy`,
+or deploy directly after exporting the values
+[../infra/poc/main.bicepparam](../infra/poc/main.bicepparam) reads from the
+environment (`AZURE_TENANT_ID`, `CROESUS_POC_CLIENT_ID`, and
+`CROESUS_DEPLOYMENT_CLIENT_SECRET`):
+
+```powershell
+az deployment group create `
+  --resource-group <name-prefix>-rg `
+  --template-file .\infra\poc\main.bicep `
+  --parameters .\infra\poc\main.bicepparam
+```
+
+The script never writes `publicNetworkAccess` in either direction. The template
+owns the posture through `ingressMode`, so drift is repaired by redeploying
+rather than by an imperative fix that the next deployment would undo.
 
 ### Run the browser comparison
 
@@ -250,10 +349,11 @@ your normal repository and tenant governance process.
 
 * B1 is a demonstration tier, not a production scale or resilience target
 * Both apps share one worker, so contention or recycle affects the comparison
-* The stack has no deployment slots, high availability, monitoring, private
-  networking, or production operations model
-* The `net452` compile target runs on App Service's installed .NET Framework
-  4.8 runtime; this does not retarget or support the legacy application
+* The stack has no deployment slots, high availability, or monitoring, and it
+  runs on public ingress by the decision recorded above
+* The classic compile target and the App Service in-box runtime are both .NET
+  Framework 4.8, but IIS hosting and interactive sign-in on that target are
+  unverified
 * The modern app is self-contained for `win-x64` because platform runtime
   availability can lag SDK releases
 * The explicit `Poc` client-secret exception is temporary and must not become
@@ -447,27 +547,36 @@ IP, and tenant identifiers before distribution.
 
 ## Caveat matrix
 
+The comparison is between two runtimes, not three. A 4.5.2 sample and a 4.8
+bridge were once separate positions; the retarget merged them, so the classic
+host is the bridge.
+
 <!-- markdownlint-disable MD060 -->
 
-| Concern                 | .NET Framework 4.5.2                              | .NET Framework 4.8 bridge                         | .NET 10 destination                              |
-|-------------------------|---------------------------------------------------|---------------------------------------------------|--------------------------------------------------|
-| Support position        | Unsupported since April 2022                      | Supported with the underlying Windows lifecycle   | Supported strategic application target           |
-| Identity integration    | Katana 4.2.3; no current MSAL.NET                  | Katana can remain; current MSAL.NET is compatible  | Microsoft.Identity.Web and current MSAL.NET       |
-| PKCE                    | Native Katana only with explicit code-flow options | Retest Katana behavior after retargeting           | Handler-managed authorization code with PKCE      |
-| Upgrade meaning         | Dev protocol proof only                            | Install, retarget, recompile, and regression test  | Migrate hosting and authentication boundary       |
-| TLS                     | Force TLS 1.2 process-wide                         | Verify OS defaults and outbound policy             | Use current platform defaults and policy          |
-| Cookie and SameSite     | Test exact browsers; old runtime semantics         | Retest after framework and patch changes           | Use secure ASP.NET Core cookie policy              |
-| Farm state protection   | Synchronize and protect ASP.NET machine keys       | Preserve stable shared keys during the bridge      | Use shared ASP.NET Core Data Protection keys      |
-| Token cache             | None in core; avoid custom process-local cache      | Design a distributed cache if downstream calls exist | Use supported MSAL cache integration when needed |
-| Operational credential  | Dev secret for proof only                          | Prefer a non-exportable certificate                | Certificate or managed-identity-backed assertion  |
-| Production recommendation | Do not deploy                                    | Transitional only when business timing requires it | Preferred destination                             |
+| Concern                   | .NET Framework 4.8 classic host                      | .NET 10 destination                              |
+|---------------------------|------------------------------------------------------|--------------------------------------------------|
+| Support position          | Supported with the underlying Windows lifecycle; in-box on Windows App Service | Supported strategic application target |
+| Identity integration      | Katana 4.2.3; current MSAL.NET is compatible but unused here | Microsoft.Identity.Web and current MSAL.NET |
+| PKCE                      | Native Katana with explicit code-flow options; retest after the retarget | Handler-managed authorization code with PKCE |
+| Migration meaning         | Retarget and recompile are done; IIS hosting and sign-in regression evidence are still outstanding | Migrate hosting and authentication boundary |
+| TLS                       | Force TLS 1.2 process-wide                            | Use current platform defaults and policy        |
+| Cookie and SameSite       | Retest every supported browser; 4.8 changes SameSite handling relative to 4.5.2 | Use secure ASP.NET Core cookie policy |
+| Farm state protection     | Preserve stable shared ASP.NET machine keys           | Use shared ASP.NET Core Data Protection keys    |
+| Token cache               | None in core; design a distributed cache if downstream calls are added | Use supported MSAL cache integration when needed |
+| Operational credential    | Dev secret for proof only; prefer a non-exportable certificate | Certificate or managed-identity-backed assertion |
+| Production recommendation | Transitional only when business timing requires it    | Preferred destination                            |
 
 <!-- markdownlint-enable MD060 -->
 
 ## Threats and limitations
 
-* The legacy runtime and IdentityModel dependency chain are old even though the
-  selected Katana packages compile for .NET Framework 4.5.2.
+* Classic ASP.NET and its IdentityModel dependency chain remain old even though
+  the host now targets .NET Framework 4.8 and the selected Katana packages are
+  current at 4.2.3.
+* The retarget is validated by a clean build and 44 passing tests. It is not
+  validated by System.Web hosting under IIS or by a completed interactive
+  sign-in, and 4.8 changes SameSite cookie handling relative to 4.5.2. Re-verify
+  sign-in before treating earlier observations as current.
 * Introducing custom PKCE glue, manual verifier storage, or manual token
   redemption would enlarge the attack surface and invalidate the comparison.
 * A process-local token cache loses state on recycle and fails across instances.

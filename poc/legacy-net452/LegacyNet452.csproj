@@ -1,7 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!--
+    Retargeted from net452 to net48 (ID-02). The directory, assembly, and namespace still
+    carry the LegacyNet452 name because paths outside this folder reference them; renaming
+    is tracked separately. net48 was chosen over net481 because net48 is in-box on App
+    Service Windows, while net481 is in-box only on Windows Server 2025 and cannot be
+    installed on Server 2016 or 2019.
+  -->
   <PropertyGroup>
-    <TargetFramework>net452</TargetFramework>
+    <TargetFramework>net48</TargetFramework>
     <RootNamespace>Croesus.LegacyNet452</RootNamespace>
     <AssemblyName>Croesus.LegacyNet452</AssemblyName>
     <DefaultItemExcludes>$(DefaultItemExcludes);Tests/**</DefaultItemExcludes>
@@ -19,7 +26,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net452" Version="1.0.3" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all" />
     <PackageReference Include="Microsoft.Owin.Host.SystemWeb" Version="4.2.3" />
     <PackageReference Include="Microsoft.Owin.Security.Cookies" Version="4.2.3" />
     <PackageReference Include="Microsoft.Owin.Security.OpenIdConnect" Version="4.2.3" />

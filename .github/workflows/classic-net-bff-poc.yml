@@ -68,6 +68,7 @@ jobs:
     outputs:
       allowed_tenant_ids_json: ${{ steps.inputs.outputs.allowed_tenant_ids_json }}
       authentication_mode: ${{ steps.inputs.outputs.authentication_mode }}
+      bff_tests_verdict: ${{ steps.bff_tests.outputs.bff_tests_verdict }}
       resource_group: ${{ steps.inputs.outputs.resource_group }}
     steps:
       - name: Check out source
@@ -119,7 +120,9 @@ jobs:
           "authentication_mode=$authenticationMode" >> $env:GITHUB_OUTPUT
           "allowed_tenant_ids_json=$tenantIdsJson" >> $env:GITHUB_OUTPUT
 
-      - name: Build and test .NET Framework 4.5.2 proof
+      # The directory keeps its legacy-net452 name because workflows, scripts, and docs reference
+      # the path; the projects themselves target .NET Framework 4.8 after the ID-02 retarget.
+      - name: Build and test .NET Framework 4.8 legacy proof
         shell: pwsh
         run: |
           dotnet build .\poc\legacy-net452\LegacyNet452.csproj --configuration Release
@@ -134,6 +137,35 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet test .\poc\modern-net10\Tests\Croesus.ModernBff.Tests.csproj --configuration Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # The reference BFF carries the security behaviour the evidence job reports on: token custody,
+      # antiforgery enforcement, credential stripping, audience and scope rejection, and the OIDC
+      # protocol negatives. Without this step a regression in any of them would ship undetected and
+      # the evidence job would report on a check nothing builds.
+      - name: Build and test reference BFF
+        id: bff_tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet build .\poc\bff-yarp-net10\Croesus.BffYarp.csproj --configuration Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet test .\poc\bff-yarp-net10\Tests\Croesus.BffYarp.Tests.csproj `
+            --configuration Release `
+            --logger "trx;LogFileName=bff-tests.trx" `
+            --results-directory "$env:RUNNER_TEMP\bff-test-results"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Only reached when the suite passed. An absent value is reported as fail by the evidence
+          # job rather than defaulting to success.
+          "bff_tests_verdict=pass" >> $env:GITHUB_OUTPUT
+
+      - name: Upload reference BFF test results
+        if: always() && steps.bff_tests.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bff-test-results-${{ github.run_id }}
+          path: ${{ runner.temp }}/bff-test-results
+          if-no-files-found: warn
+          retention-days: 3
 
       - name: Publish both App Service packages
         shell: pwsh
@@ -272,8 +304,26 @@ jobs:
     name: Deploy protected PoC environment
     if: inputs.operation == 'deploy'
     needs: validate
+    # A GitHub-hosted runner is sufficient only while the template resolves ingressMode to Public,
+    # which is the deliberate POC posture recorded under ID-01. A hosted runner has no route into a
+    # VNet, so if ingressMode is ever set to Private this job can neither deploy the package nor
+    # probe the site, and a VNet-connected runner becomes mandatory. ID-03 declined a self-hosted
+    # runner on the basis that public ingress removes the need for one; that basis disappears with
+    # the ingress change, not gradually. The prohibited workarounds are enabling basic publishing
+    # credentials, opening SCM, or setting publicNetworkAccess imperatively to restore reachability:
+    # each trades the security property the POC exists to demonstrate for a green pipeline.
     runs-on: windows-latest
     environment: poc-demo
+    outputs:
+      ingress_verification_verdict: ${{ steps.ingress_post.outputs.ingress_verification_verdict }}
+      ingress_not_executed_count: ${{ steps.ingress_post.outputs.not_executed_count }}
+      resolved_ingress_mode: ${{ steps.infrastructure.outputs.resolved_ingress_mode }}
+      resolved_sku_name: ${{ steps.infrastructure.outputs.resolved_sku_name }}
+    # Rollback: revert the application artefact by redeploying the previous package, or disable the
+    # affected route. Rollback never opens the network and never removes a Conditional Access policy
+    # to restore a green pipeline. Teardown runs scripts/cleanup-classic-net-bff-deployment.ps1,
+    # which deletes only the ownership-tagged Entra registration this workflow created; it removes
+    # no private DNS zone, VNet, subnet, or resource group that other workloads depend on.
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -409,6 +459,11 @@ jobs:
             "modern_app_name=$($outputs.modernAppName.value)" >> $env:GITHUB_OUTPUT
             "legacy_base_url=$($outputs.legacyBaseUrl.value)" >> $env:GITHUB_OUTPUT
             "modern_base_url=$($outputs.modernBaseUrl.value)" >> $env:GITHUB_OUTPUT
+            # The expected ingress posture and SKU are read from the template's own resolved
+            # outputs rather than restated here. Hardcoding them would make the verification agree
+            # with the workflow instead of with the template it is supposed to be checking.
+            "resolved_ingress_mode=$($outputs.resolvedIngressMode.value)" >> $env:GITHUB_OUTPUT
+            "resolved_sku_name=$($outputs.resolvedAppServicePlanSkuName.value)" >> $env:GITHUB_OUTPUT
           }
           finally {
             [Environment]::SetEnvironmentVariable(
@@ -418,6 +473,36 @@ jobs:
             Remove-Item Env:\CROESUS_DEPLOYMENT_CLIENT_SECRET -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath $statePath -Force -ErrorAction SilentlyContinue
             $clientSecret = $null
+          }
+
+      # Provisioning success is not the deployment acceptance test. `az deployment group create`
+      # returning zero proves the control plane accepted the template; it proves nothing about
+      # whether the data plane is reachable, carries the declared ingress posture, or sits on the
+      # declared plan tier. This check runs before the packages land so a posture or tier problem
+      # is attributed to the environment rather than to the application that had not shipped yet.
+      # Assertion is Posture because no application content exists at this point, so a
+      # challenge-shape assertion here would report an empty site as an authentication defect.
+      - name: Verify ingress posture before package deployment
+        id: ingress_pre
+        shell: pwsh
+        env:
+          EXPECTED_INGRESS_MODE: ${{ steps.infrastructure.outputs.resolved_ingress_mode }}
+          EXPECTED_SKU_NAME: ${{ steps.infrastructure.outputs.resolved_sku_name }}
+          LEGACY_APP_NAME: ${{ steps.infrastructure.outputs.legacy_app_name }}
+          MODERN_APP_NAME: ${{ steps.infrastructure.outputs.modern_app_name }}
+          REGISTRATION_CLIENT_ID: ${{ steps.infrastructure.outputs.registration_client_id }}
+          RESOURCE_GROUP: ${{ needs.validate.outputs.resource_group }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($appName in @($env:LEGACY_APP_NAME, $env:MODERN_APP_NAME)) {
+            & .\scripts\verify-ingress.ps1 `
+              -ResourceGroupName $env:RESOURCE_GROUP `
+              -AppName $appName `
+              -ExpectedClientId $env:REGISTRATION_CLIENT_ID `
+              -ExpectedIngressMode $env:EXPECTED_INGRESS_MODE `
+              -ExpectedAppServicePlanSkuName $env:EXPECTED_SKU_NAME `
+              -Assertion Posture
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
       - name: Deploy .NET Framework application
@@ -431,6 +516,52 @@ jobs:
         with:
           app-name: ${{ steps.infrastructure.outputs.modern_app_name }}
           package: ./out/modern
+
+      # The same script with the full assertion set after the packages land. The pre-deployment run
+      # established the environment; this one establishes that the deployed application challenges
+      # correctly on the posture the template declared. The script distinguishes DNS, routing,
+      # authorization, and challenge-shape failure, and resolves a 403 to tier degradation, ingress
+      # drift, or a stopped site so the operator is not sent to redeploy for a cause a redeploy
+      # cannot fix. Its `not-executed` verdicts are surfaced to the evidence job, which decides
+      # whether missing evidence blocks a complete-proof claim; this step fails only on `fail`.
+      - name: Verify ingress and challenge shape after package deployment
+        id: ingress_post
+        shell: pwsh
+        env:
+          EXPECTED_INGRESS_MODE: ${{ steps.infrastructure.outputs.resolved_ingress_mode }}
+          EXPECTED_SKU_NAME: ${{ steps.infrastructure.outputs.resolved_sku_name }}
+          LEGACY_APP_NAME: ${{ steps.infrastructure.outputs.legacy_app_name }}
+          MODERN_APP_NAME: ${{ steps.infrastructure.outputs.modern_app_name }}
+          REGISTRATION_CLIENT_ID: ${{ steps.infrastructure.outputs.registration_client_id }}
+          RESOURCE_GROUP: ${{ needs.validate.outputs.resource_group }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $notExecuted = 0
+          # The legacy challenge route is /signin; the modern challenge route is the site root.
+          $targets = @(
+            @{ Name = $env:LEGACY_APP_NAME; ChallengePath = '/signin' },
+            @{ Name = $env:MODERN_APP_NAME; ChallengePath = '/' })
+          foreach ($target in $targets) {
+            $output = & .\scripts\verify-ingress.ps1 `
+              -ResourceGroupName $env:RESOURCE_GROUP `
+              -AppName $target.Name `
+              -ExpectedClientId $env:REGISTRATION_CLIENT_ID `
+              -ChallengePath $target.ChallengePath `
+              -ExpectedIngressMode $env:EXPECTED_INGRESS_MODE `
+              -ExpectedAppServicePlanSkuName $env:EXPECTED_SKU_NAME `
+              -Assertion All
+            $scriptExitCode = $LASTEXITCODE
+            $output | ForEach-Object { Write-Output $_ }
+            $summary = @($output) | Where-Object { $_ -match '^summary ' } | Select-Object -Last 1
+            # Named group is not `count`: $Matches.count would resolve to the hashtable's own Count
+            # property rather than the capture, silently reporting the wrong number.
+            if ($summary -match 'not-executed=(?<notExecuted>\d+)') {
+              $notExecuted += [int]$Matches['notExecuted']
+            }
+            if ($scriptExitCode -ne 0) { exit $scriptExitCode }
+          }
+          "not_executed_count=$notExecuted" >> $env:GITHUB_OUTPUT
+          "ingress_verification_verdict=pass" >> $env:GITHUB_OUTPUT
 
       - name: Verify authentication redirects
         shell: pwsh
@@ -574,6 +705,8 @@ jobs:
           LEGACY_BASE_URL: ${{ steps.infrastructure.outputs.legacy_base_url }}
           MODERN_BASE_URL: ${{ steps.infrastructure.outputs.modern_base_url }}
           REGISTRATION_CLIENT_ID: ${{ steps.infrastructure.outputs.registration_client_id }}
+          RESOLVED_INGRESS_MODE: ${{ steps.infrastructure.outputs.resolved_ingress_mode }}
+          RESOLVED_SKU_NAME: ${{ steps.infrastructure.outputs.resolved_sku_name }}
           RESOURCE_GROUP: ${{ needs.validate.outputs.resource_group }}
         run: |
           @"
@@ -581,10 +714,174 @@ jobs:
 
           | Resource | Link |
           | --- | --- |
-          | Legacy .NET Framework 4.5.2 proof | $env:LEGACY_BASE_URL |
+          | Legacy .NET Framework 4.8 proof | $env:LEGACY_BASE_URL |
           | Modern self-contained .NET 10 proof | $env:MODERN_BASE_URL |
           | Azure resource group | https://portal.azure.com/#@${{ env.AZURE_TENANT_ID }}/resource/subscriptions/${{ env.AZURE_SUBSCRIPTION_ID }}/resourceGroups/$env:RESOURCE_GROUP/overview |
           | Entra app registration | https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/Overview/appId/$env:REGISTRATION_CLIENT_ID |
 
-          The legacy assembly targets .NET Framework 4.5.2 but runs on the Windows App Service installed .NET Framework 4.8 runtime. Both apps share one B1 worker and have no deployment slots. The demo credential expires after ${{ inputs.credential_lifetime_days }} day(s); run the guarded teardown workflow when the demonstration is complete.
+          The legacy assembly targets .NET Framework 4.8 and runs on the in-box Windows App Service 4.8 runtime, so the compile-time target and the hosting runtime agree. Both apps share one worker on the ``$env:RESOLVED_SKU_NAME`` plan and have no deployment slots. Ingress resolved to ``$env:RESOLVED_INGRESS_MODE``; under ID-01 that is the deliberate POC posture and this deployment does not demonstrate private ingress. An external process returns this plan to F1 on roughly a 24 hour cycle, so a later 403 most often means tier degradation rather than ingress drift; ``scripts/verify-ingress.ps1`` distinguishes the two. The demo credential expires after ${{ inputs.credential_lifetime_days }} day(s); run the guarded teardown workflow when the demonstration is complete.
           "@ >> $env:GITHUB_STEP_SUMMARY
+
+  evidence:
+    name: Report security evidence verdicts
+    if: always() && inputs.operation == 'deploy'
+    needs:
+      - validate
+      - deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # Workload identity authentication is not user authentication. This job reports a verdict for
+      # every required criterion and never lets an absent result count as a pass: a criterion whose
+      # evidence was not produced is recorded as not-executed, and a not-executed required criterion
+      # blocks a complete-proof claim. The optional-skip convention in api/Tests/LiveRedemptionTests.cs
+      # is deliberately not inherited here, because a skip that satisfies a gate is a silent pass.
+      - name: Build evidence verdict artefact
+        id: verdicts
+        shell: pwsh
+        env:
+          BFF_TESTS_VERDICT: ${{ needs.validate.outputs.bff_tests_verdict }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          INGRESS_NOT_EXECUTED_COUNT: ${{ needs.deploy.outputs.ingress_not_executed_count }}
+          INGRESS_VERDICT: ${{ needs.deploy.outputs.ingress_verification_verdict }}
+          RESOLVED_INGRESS_MODE: ${{ needs.deploy.outputs.resolved_ingress_mode }}
+          VALIDATE_RESULT: ${{ needs.validate.result }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Resolve-Verdict {
+            param(
+              [Parameter(Mandatory)][AllowEmptyString()][string]$Observed,
+              [Parameter(Mandatory)][string]$PassWhen,
+              [Parameter(Mandatory)][string]$NotExecutedReason
+            )
+
+            if ([string]::IsNullOrWhiteSpace($Observed)) { return @('not-executed', $NotExecutedReason) }
+            if ($Observed -ceq $PassWhen) { return @('pass', 'observed') }
+            return @('fail', 'observed')
+          }
+
+          $deterministic = [ordered]@{}
+          $ciVerdict, $ciReason = Resolve-Verdict `
+            -Observed $env:VALIDATE_RESULT -PassWhen 'success' -NotExecutedReason 'validate-job-did-not-report'
+          foreach ($criterion in @(
+              'registration-shape',
+              'configuration-contract',
+              'build-and-unit-tests',
+              'antiforgery-enforcement',
+              'credential-stripping',
+              'audience-and-scope-rejection',
+              'protocol-negative-cases',
+              'evidence-redaction')) {
+            $deterministic[$criterion] = @{ verdict = $ciVerdict; source = "validate-job:$ciReason" }
+          }
+
+          $bffVerdict, $bffReason = Resolve-Verdict `
+            -Observed $env:BFF_TESTS_VERDICT -PassWhen 'pass' -NotExecutedReason 'bff-test-step-produced-no-verdict'
+          $deterministic['reference-bff-tests'] = @{ verdict = $bffVerdict; source = "validate-job:$bffReason" }
+
+          $deployVerdict, $deployReason = Resolve-Verdict `
+            -Observed $env:DEPLOY_RESULT -PassWhen 'success' -NotExecutedReason 'deploy-job-did-not-run'
+          $deterministic['deployment'] = @{ verdict = $deployVerdict; source = "deploy-job:$deployReason" }
+
+          $ingressVerdict, $ingressReason = Resolve-Verdict `
+            -Observed $env:INGRESS_VERDICT -PassWhen 'pass' -NotExecutedReason 'ingress-verification-did-not-report'
+          $deterministic['ingress-posture'] = @{ verdict = $ingressVerdict; source = "verify-ingress:$ingressReason" }
+          $deterministic['challenge-shape'] = @{ verdict = $ingressVerdict; source = "verify-ingress:$ingressReason" }
+
+          # Checks the verification script declined to run are carried as not-executed, not folded
+          # into its exit code. The script exits zero on not-executed, so counting them here is the
+          # only way an honestly-declined check stays visible instead of reading as a pass.
+          $notExecutedChecks = 0
+          if (-not [string]::IsNullOrWhiteSpace($env:INGRESS_NOT_EXECUTED_COUNT)) {
+            $notExecutedChecks = [int]$env:INGRESS_NOT_EXECUTED_COUNT
+          }
+
+          # Interactive delegated-user evidence requires a human on an approved device under a
+          # separate approval. This pipeline never collects it, so it is always reported absent here
+          # rather than inferred from workload identity success. No resource owner password flow, no
+          # Conditional Access exclusion, and no stored user password is introduced to fake it.
+          $delegated = [ordered]@{}
+          foreach ($criterion in @(
+              'interactive-sign-in',
+              'delegated-token-acquisition',
+              'conditional-access-enforcement',
+              'sign-in-log-correlation')) {
+            $delegated[$criterion] = @{
+              verdict = 'not-executed'
+              source = 'requires-separately-approved-interactive-session-on-an-approved-device'
+            }
+          }
+
+          $allVerdicts = @()
+          $allVerdicts += $deterministic.Values.verdict
+          $allVerdicts += $delegated.Values.verdict
+          $failCount = @($allVerdicts | Where-Object { $_ -ceq 'fail' }).Count
+          $notExecutedCount = @($allVerdicts | Where-Object { $_ -ceq 'not-executed' }).Count
+
+          $report = [ordered]@{
+            runId = $env:GITHUB_RUN_ID
+            resolvedIngressMode = if ($env:RESOLVED_INGRESS_MODE) { $env:RESOLVED_INGRESS_MODE } else { 'unknown' }
+            deterministicCriteria = $deterministic
+            delegatedUserCriteria = $delegated
+            ingressChecksNotExecuted = $notExecutedChecks
+            completeProofClaim = if ($failCount -eq 0 -and $notExecutedCount -eq 0 -and $notExecutedChecks -eq 0) {
+              'supported'
+            }
+            else {
+              'blocked-by-missing-or-failed-required-evidence'
+            }
+            accessControl = @{
+              readers = 'poc-demo environment reviewers and the named POC operator only'
+              retentionDays = 3
+              note = 'sanitized evidence is still identity telemetry; do not forward outside the named reader list'
+            }
+          }
+
+          $reportPath = Join-Path $env:RUNNER_TEMP 'evidence-verdicts.json'
+          $report | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $reportPath -Encoding utf8
+          "report_path=$reportPath" >> $env:GITHUB_OUTPUT
+          "complete_proof_claim=$($report.completeProofClaim)" >> $env:GITHUB_OUTPUT
+
+          $rows = foreach ($entry in (@($deterministic.GetEnumerator()) + @($delegated.GetEnumerator()))) {
+            "| ``$($entry.Key)`` | ``$($entry.Value.verdict)`` | ``$($entry.Value.source)`` |"
+          }
+          @"
+          ## Security evidence verdicts
+
+          | Criterion | Verdict | Source |
+          | --- | --- | --- |
+          $($rows -join [Environment]::NewLine)
+
+          Ingress checks reported not-executed: ``$notExecutedChecks``.
+          Complete-proof claim: ``$($report.completeProofClaim)``.
+
+          Interactive delegated-user evidence is collected in a separately approved run on the intended browser and device. It is absent here by design and is reported not-executed rather than inferred from workload identity success. No state-changing request is replayed to generate an additional log row.
+
+          Evidence artefact readers are restricted to the ``poc-demo`` environment reviewers and the named POC operator; retention is 3 days.
+          "@ >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload evidence verdict artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-verdicts-${{ github.run_id }}
+          path: ${{ steps.verdicts.outputs.report_path }}
+          if-no-files-found: error
+          retention-days: 3
+
+      # A complete-proof claim is asserted only when no required criterion failed and none was left
+      # unexecuted. This step does not fail the run, because an absent interactive session is an
+      # expected state for an automated pipeline, not a defect. It fails the claim instead, which is
+      # the distinction DD-11 exists to preserve.
+      - name: Report complete-proof claim
+        shell: pwsh
+        env:
+          COMPLETE_PROOF_CLAIM: ${{ steps.verdicts.outputs.complete_proof_claim }}
+        run: |
+          if ($env:COMPLETE_PROOF_CLAIM -cne 'supported') {
+            Write-Warning "Complete-proof claim is $env:COMPLETE_PROOF_CLAIM. Required evidence is missing or failed; do not represent this run as complete security proof."
+          }
+          else {
+            Write-Output 'Complete-proof claim supported by this run.'
+          }
