@@ -15,9 +15,15 @@ pnpm-debug.log*
 # ---------------------------------------------------------------------------
 bin/
 obj/
+publish/
+TestResults/
+*.trx
 *.user
 *.suo
 project.lock.json
+
+# Deployment packages produced by the provisioning scripts
+*.zip
 
 # ---------------------------------------------------------------------------
 # Credential material (never commit)
