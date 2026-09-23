@@ -373,3 +373,41 @@ Decisions I made under delegated authority, where the user answered "you may if 
   * Context: the user asked to be reminded to redeploy on a 403.
   * Decision: Step 5.1 resolves a 403 to one of tier degradation, ingress drift, or a stopped site, each with a named remedy, instead of always recommending a redeploy.
   * Reasoning: three distinct causes present to the operator as the same symptom. The observed 403 carrying a "Web App - Unavailable" title is specifically the disabled-public-access signature, which a redeploy would not fix. Prescribing one remedy for all three would send the operator down the wrong path in two cases out of three.
+
+## Deployment Findings: 2026-09-23
+
+### Implementation Deviations
+
+* DD-23: `main.bicep` omitted `netFrameworkVersion` on both .NET 10 sites
+  * Plan specifies: the template configures each site's runtime
+  * Implementation differs: only the legacy site had the property set; the two .NET 10 sites inherited the ARM default of `v4.0` and returned HTTP 500.32
+  * Rationale: not a deviation from intent but a gap in it. An omitted property cannot be caught by a static check that reads what the template states, which is why nine phases of validation missed it. Found within minutes of the first real deployment.
+
+### Unaddressed Research Items
+
+* DR-03: the reference BFF has no configuration contract for its own required settings
+  * Source: observed live on 2026-09-23 from the ANCM stdout capture
+  * Reason: the application validates `DownstreamApi:Scopes` at startup and fails closed, but no artifact defines what that scope should be, the registration exposes no API, and no proxy destinations exist
+  * Impact: high for any attempt to host the BFF; none for the two-app comparison the POC actually demonstrates
+
+## Suggested Follow-On Work
+
+* WI-25: Define the BFF configuration contract — expose an Application ID URI and delegated scope on the registration, decide the proxy destination set, and add the corresponding app settings to `main.bicep` (high)
+  * Source: 2026-09-23 deployment
+  * Dependency: a decision on what the BFF is meant to front, which Step 1.4 returned as out-of-scope and Step 3.7 left blocked
+* WI-26: Pin `RuntimeIdentifier` to `win-x64` in the publish path for both .NET 10 projects, or set it in CI, so an ARM64 developer machine cannot produce an unloadable package (medium)
+  * Source: 2026-09-23 deployment
+  * Dependency: none
+* WI-27: Add a post-deployment application-liveness check to `verify-ingress.ps1` or the CI evidence job — every ingress check passed against a site returning HTTP 500, because the script asserts reachability and challenge shape, not that the application started (medium)
+  * Source: 2026-09-23 deployment
+  * Dependency: none
+* WI-28: Make the verifier's `ChallengePath` default fit the app under test — the legacy app serves an anonymous page at `/` and challenges at `/signin`, so the default produced a false `challenge-not-a-redirect` failure (low)
+  * Source: 2026-09-23 deployment
+  * Dependency: none
+
+## User Decisions
+
+* ID-05: Whether to host the reference BFF — Option "Yes, host the BFF too" selected
+  * Rationale: user elected to expand beyond the plan default of `deployBffSite = false`. The site provisions correctly; the application cannot start for reasons recorded as WI-25.
+* ID-06: How to supply the expired client secret — Option "Rotate the secret, then deploy" selected
+  * Rationale: the deployed credential had been expired for six weeks. Rotated with `--append` so the prior credential was not invalidated, and the value was never displayed or routed through the assistant.

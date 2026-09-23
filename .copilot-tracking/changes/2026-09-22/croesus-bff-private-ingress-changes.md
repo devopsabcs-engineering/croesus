@@ -619,3 +619,37 @@ The plan is F1 today. Deploying `main.bicep` at its `B1` default will restore th
 ### What remains unproven
 
 No delegated-user sign-in was performed, so no interactive evidence exists and the CI evidence job correctly reports those criteria as `not-executed`. The reference BFF has never been hosted; `deployBffSite` defaults to false. The retargeted legacy app was never exercised under IIS, and because 4.8 changes SameSite cookie handling relative to 4.5.2, earlier sign-in observations do not carry forward. The BFF does not front the legacy app; Step 1.4 returned an out-of-scope verdict and Step 3.7 executed its blocked branch. No artifact claims otherwise.
+
+## Deployment Record: 2026-09-23
+
+First deployment of this work. Every prior Azure interaction in this effort was read-only.
+
+### Pre-deployment state
+
+Plan `croesus-bff-a3v24wppuvd34-plan` at F1 Free, degraded from the declared B1 as predicted under WI-16. Both sites `publicNetworkAccess: Disabled`, contradicting the template, which `verify-ingress.ps1` had already reported as `ingress-posture-drift`. The client secret on registration `3ee7b866-1d40-4746-a880-f7fda6d2d53e` had expired on 2026-08-10, six weeks earlier, confirming WI-04 and DR-02.
+
+### Actions taken
+
+Rotated the client secret with `--append`, new expiry 2027-09-23. The value was captured directly into the deployment environment variable and never displayed. Set `deployBffSite = true` under ID-05. Deployed `infra/poc/main.bicep` twice: once as previewed by `what-if`, and once more after the runtime defect below. Published and deployed three application packages. Added the BFF host to the registration redirect URI list, which the template requires but cannot set.
+
+### Defect found by deploying
+
+`main.bicep` set `netFrameworkVersion` only on the legacy site. Both .NET 10 sites silently inherited the ARM default of `v4.0`, so ANCM refused to load their assemblies and returned HTTP 500.32. Fixed in the template rather than patched on the live site. This was invisible to every static check and to the entire test suite, because it is a property the template omits rather than one it states wrongly.
+
+### Second defect, in the deployment procedure
+
+The first publish was self-contained with no explicit RID. The development machine is Windows ARM64, so it produced win-arm64 binaries, which App Service Windows x64 cannot load. This also surfaces as HTTP 500.32 and is indistinguishable from the template defect by status code alone. Both .NET 10 apps were republished with `-r win-x64`. The legacy app was unaffected because .NET Framework output is architecture-neutral IL.
+
+### Verification results
+
+`scripts/verify-ingress.ps1 -Assertion All` against the legacy and modern sites: `summary pass=7 fail=0 not-executed=0` each, exit 0. The `ingress-posture-drift` and `plan-tier-degraded` findings both cleared. The `challenge-shape` check passed, which confirms the rotated credential and the deployed configuration produce a well-formed authorize request.
+
+### Not verified
+
+No delegated-user sign-in was performed, so interactive evidence remains absent and the criteria that depend on it are still honestly `not-executed`.
+
+The BFF site is created, reachable, and running the correct architecture, but the application will not start. It fails closed on `DownstreamApi:Scopes must list at least one delegated scope for the owned API`. The template supplies no such setting, and the registration exposes no API at all, having neither an Application ID URI nor any delegated scope. It also has no `ReverseProxy` cluster or route configuration, so it has no destination to proxy to. Hosting the BFF therefore requires design decisions that were never made, not a deployment step. Recorded as WI-25. The template change enabling the site is retained because the site itself provisions correctly; only the application configuration contract is missing.
+
+### Working tree
+
+`poc/bff-yarp-net10/Tests/DiagnosticTests.cs` is untracked, references `System.Web` from a `net10.0` project, and fails. It was not authored as part of this deployment and has been left in place rather than discarded. The 56 tracked tests still pass.

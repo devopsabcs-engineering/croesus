@@ -15,8 +15,10 @@ param ingressMode = 'Public'
 // declared B1, and an external process returns it to F1 on roughly a 24 hour cycle. Expect to redeploy.
 param appServicePlanSkuName = 'B1'
 
-// Off until the application in poc/bff-yarp-net10 is ready to publish. The reference BFF hostname is
+// On as of 2026-09-23. The application in poc/bff-yarp-net10 builds clean and passes its test suite, so
+// the reference BFF is now hosted rather than merely reserved. The hostname is
 // croesus-bff-a3v24wppuvd34-bff.azurewebsites.net under this namePrefix, derived from uniqueSuffix in
-// main.bicep, and it matches the BFF_BASE_URI default in scripts/provision-app-registrations.sh. That
-// hostname is stable whether or not the site exists, so the registration can claim it either way.
-param deployBffSite = false
+// main.bicep, and it matches the BFF_BASE_URI default in scripts/provision-app-registrations.sh. Sign-in
+// through this host additionally requires https://<bffHostName>/signin-oidc on the registration's redirect
+// URI list, because main.bicep points the BFF at the same clientId as the legacy and modern sites.
+param deployBffSite = true

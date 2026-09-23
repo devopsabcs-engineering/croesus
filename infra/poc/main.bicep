@@ -208,6 +208,9 @@ resource modernApp 'Microsoft.Web/sites@2025-03-01' = {
       appCommandLine: 'Croesus.ModernBff.exe'
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
+      // Required. Without an explicit value the site inherits the .NET Framework default of v4.0, and
+      // ANCM then fails to load a .NET 10 assembly with HTTP 500.32. Observed live on 2026-09-23.
+      netFrameworkVersion: 'v10.0'
       use32BitWorkerProcess: false
       appSettings: concat([
         {
@@ -260,6 +263,9 @@ resource bffApp 'Microsoft.Web/sites@2025-03-01' = if (deployBffSite) {
       appCommandLine: 'Croesus.BffYarp.exe'
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
+      // Required. Without an explicit value the site inherits the .NET Framework default of v4.0, and
+      // ANCM then fails to load a .NET 10 assembly with HTTP 500.32. Observed live on 2026-09-23.
+      netFrameworkVersion: 'v10.0'
       use32BitWorkerProcess: false
       appSettings: concat([
         {
