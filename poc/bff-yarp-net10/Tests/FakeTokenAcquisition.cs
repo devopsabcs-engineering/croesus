@@ -34,6 +34,7 @@ internal sealed class FakeTokenAcquisition : ITokenAcquisition
         ClaimsPrincipal? user = null,
         TokenAcquisitionOptions? tokenAcquisitionOptions = null)
     {
+        RequireNamedScheme(authenticationScheme);
         LastAuthenticationScheme = authenticationScheme;
         return Task.FromResult(Produce(scopes).AccessToken);
     }
@@ -46,8 +47,23 @@ internal sealed class FakeTokenAcquisition : ITokenAcquisition
         ClaimsPrincipal? user = null,
         TokenAcquisitionOptions? tokenAcquisitionOptions = null)
     {
+        RequireNamedScheme(authenticationScheme);
         LastAuthenticationScheme = authenticationScheme;
         return Task.FromResult(Produce(scopes));
+    }
+
+    /// <summary>
+    /// Reproduces IDW10503. The real library resolves an unnamed scheme to the application default, which here is
+    /// Cookies, and then finds no Entra options registered under it. A fake that accepted anything let that
+    /// defect reach production with the suite green, so it is refused at the same point instead.
+    /// </summary>
+    private static void RequireNamedScheme(string? authenticationScheme)
+    {
+        if (string.IsNullOrEmpty(authenticationScheme))
+        {
+            throw new InvalidOperationException(
+                "IDW10503: Cannot determine the cloud Instance. The provided authentication scheme was ''.");
+        }
     }
 
     public Task<string> GetAccessTokenForAppAsync(

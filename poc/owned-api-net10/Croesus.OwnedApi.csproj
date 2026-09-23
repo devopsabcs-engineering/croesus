@@ -10,6 +10,7 @@
     <DefaultItemExcludes>$(DefaultItemExcludes);Tests/**</DefaultItemExcludes>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <PublishRuntimeIdentifier>win-x64</PublishRuntimeIdentifier>
     <PublishSelfContained>true</PublishSelfContained>
     <UseAppHost>true</UseAppHost>
   </PropertyGroup>

@@ -513,3 +513,45 @@ Decisions I made under delegated authority, where the user answered "you may if 
 * WI-38: Alert on server-side failures now that Application Insights is collecting — {{low}}
   * Source: telemetry enablement, 2026-09-23
   * Dependency: none. A failed-request or exception alert rule on `croesus-bff-poc-ai` would surface the next occurrence without a manual log read.
+
+## Work Item Closure and Discrepancies: 2026-09-23
+
+### Implementation Deviations
+
+* DD-30: The persisted Data Protection key ring broke the sign-in route before it fixed anything.
+  * Plan specifies: set `DataProtection:KeyRingPath` so the key ring survives restart, per WI-33.
+  * Implementation differs: setting the path alone activated the existing unconditional `ProtectKeysWithDpapi` call on the running build, and DPAPI failed on the App Service worker with `CryptographicException` from `DpapiSecretSerializerHelper.ProtectWithDpapiCore`. Every request that needed to protect a payload faulted, so `/bff/login` returned HTTP 500 while the anonymous root still returned 200.
+  * Rationale: DPAPI is the wrong protector for this host. A Windows App Service worker runs without a loaded user profile, so user-scoped DPAPI cannot encrypt, and machine-scoped keys cannot be read by a second instance sharing the key ring. DPAPI is now opt-in through `DataProtection:ProtectKeysWithDpapi`, defaulting to off.
+
+* DD-31: A failed deployment was read as a successful one.
+  * Plan specifies: deploy the package, then verify.
+  * Implementation differs: `az webapp deploy` emitted an HTML fragment and the Kudu deployments endpoint returned `status=3`, which was read as success. In the Kudu status enum, 3 is Failed and 4 is Success. The stale build therefore remained in place through the subsequent checks.
+  * Rationale: recorded so the numeric status is never read as an ordinal again. A redeploy returned `status=4` and the site recovered.
+
+* DD-32: The ingress verifier reported a clean result against a site returning HTTP 500.
+  * Plan specifies: verify ingress after deployment.
+  * Implementation differs: DNS, TLS, and ingress posture all passed while `/bff/login` faulted, because none of those checks reads an application response code. The challenge-shape check did fail, but with `challenge-not-a-redirect`, which attributes an application fault to a challenge defect and sends an operator to the wrong remedy.
+  * Rationale: this is exactly the gap WI-27 described. The new `application-liveness` check asserts a non-5xx response on its own path and carries a remedy that names the application package rather than the Bicep template.
+
+### Resolved Work Items
+
+* WI-15 and WI-25: closed. `docs/configuration-contract.md` now carries a "Reference BFF app settings" section enumerating every key the BFF and the owned API read, with purpose and production requirement.
+* WI-26: closed. `PublishRuntimeIdentifier` and `PublishSelfContained` are pinned in both .NET 10 project files, verified by publishing with no command-line RID flags.
+* WI-27: closed. `scripts/verify-ingress.ps1` gained `-LivenessPath` and an `application-liveness` check, validated against a live 500.
+* WI-28: closed. The verifier's .NOTES block records that the BFF challenges at `/bff/login` while its root is deliberately anonymous, so the default challenge path is correct for the comparison apps and wrong for the BFF.
+* WI-33: closed. `DataProtection__KeyRingPath` is set to `D:\home\data\croesus-bff-keys` and a persisted key file was confirmed through Kudu.
+* WI-35: closed. `AuthorizeRequest_AsksForTheFormPostResponseMode` pins `response_mode=form_post` and `response_type=code`.
+* WI-36: closed. `FakeTokenAcquisition.RequireNamedScheme` refuses an unnamed scheme, reproducing IDW10503 in the suite.
+* WI-38: closed. Action group `croesus-bff-poc-ag` and two severity 2 metric alert rules fire on failed requests and server-side exceptions.
+
+### Still Open
+
+* WI-37: assert protocol behaviour against a real identity provider. Priority medium. The response-mode regression test narrows the gap but does not close it, because the synthetic factory still replaces Microsoft.Identity.Web's own code redemption. Closing this needs a live-tenant integration harness with its own credential handling, which is a larger change than a code fix.
+* WI-01 through WI-09, WI-10 through WI-24 excluding WI-14 and WI-15, and WI-29 through WI-31 remain out of scope for a code change. They require customer tenant access, governance decisions, or vendor responses rather than repository edits.
+* WI-14: extend `scripts/teardown-app-registrations.sh` to the BFF and owned API registrations. Priority medium, deferred because the teardown path deletes tenant objects and warrants a separate reviewed change rather than being folded into a documentation and hardening pass.
+
+## Suggested Follow-On Work
+
+* WI-39: Add a Redis or other shared distributed cache to the PoC so sessions and the MSAL token cache span instances. Priority medium. Dependency: a decision on whether the PoC should demonstrate multi-instance behaviour at all, given the plan is a single B1. The key ring is now persisted, which makes the in-process cache the remaining single-instance constraint.
+* WI-40: Fold the liveness assertion and the correct challenge path into whatever automation calls `verify-ingress.ps1`, so the BFF is verified with `-ChallengePath /bff/login` rather than the default. Priority medium. Dependency: none.
+* WI-41: Treat a Kudu deployment status other than 4 as a failure in any script that deploys a package, rather than reporting the CLI's own exit code. Priority high, because a silently stale build defeats every check downstream of it. Dependency: none.

@@ -30,7 +30,10 @@
     this script.
 
 .NOTES
-    The modern challenge route is the site root. The legacy challenge route is /signin.
+    The modern challenge route is the site root. The legacy challenge route is /signin. The reference
+    back-end-for-frontend serves an anonymous page at its root and challenges at /bff/login, so it must
+    be called with -ChallengePath /bff/login. Passing the default against it reports
+    challenge-not-a-redirect, which is an accurate reading of the root and the wrong route to read.
 #>
 [CmdletBinding()]
 param(
@@ -42,6 +45,11 @@ param(
     [string]$ExpectedClientId,
     [ValidatePattern('^/')]
     [string]$ChallengePath = '/',
+    # Probed separately from the challenge route. A deployment can report success while the
+    # application faults on every request, and that condition is a server error rather than a
+    # challenge-shape defect.
+    [ValidatePattern('^/')]
+    [string]$LivenessPath = '/',
     [ValidatePattern('^/')]
     [string]$ExpectedCallbackPath = '/signin-oidc',
     [string]$ExpectedAuthorityHost = 'login.microsoftonline.com',
@@ -82,6 +90,9 @@ $allowedDetails = @(
     'tls-validated',
     'challenge-shape-valid',
     'challenge-not-a-redirect',
+    'application-responded-without-server-error',
+    'application-returned-server-error',
+    'application-liveness-probe-failed',
     'challenge-authority-unexpected',
     'challenge-client-id-unexpected',
     'challenge-redirect-uri-unexpected',
@@ -115,6 +126,10 @@ $forbiddenRemedies = @{
     'control-plane-read-failed' = 'The control plane could not be read, so the cause is undetermined. Restore Azure CLI authentication for the target subscription and re-run.'
     'forbidden-cause-undetermined' = 'Plan tier, ingress posture, and site state all match the template. Capture the response and escalate rather than redeploying blindly.'
 }
+
+# A server error is an application fault, not an ingress fault, so it carries its own remedy. Redeploying
+# the template repairs nothing here because the template already deployed successfully.
+$livenessRemedy = 'The application faulted. Read the site logs through Kudu or the Log Analytics workspace behind the Application Insights component, then redeploy the application package. Redeploying infra/poc/main.bicep does not address this.'
 
 $script:passCount = 0
 $script:failCount = 0
@@ -452,6 +467,31 @@ else {
 }
 
 $challengeProbe = $null
+# DNS resolves, TLS validates, and the ingress posture matches while every request faults, so a 5xx is
+# invisible to all of the checks above. This deployment once reported a clean verification against a site
+# returning HTTP 500, so application liveness is asserted on its own.
+if ($Assertion -ceq 'Posture') {
+    Write-Verdict -Check 'application-liveness' -Verdict 'not-executed' -Detail 'unspecified'
+}
+elseif ($ExpectedIngressMode -ceq 'Private') {
+    Write-Verdict -Check 'application-liveness' -Verdict 'not-executed' -Detail 'unconnected-client-condition-not-established'
+}
+else {
+    $livenessUrl = "$appBaseUrl$LivenessPath"
+    Write-Output "liveness-url=$livenessUrl"
+    $livenessProbe = Invoke-ChallengeProbe -Url $livenessUrl
+    if (-not $livenessProbe.Succeeded) {
+        Write-Verdict -Check 'application-liveness' -Verdict 'fail' -Detail 'application-liveness-probe-failed'
+    }
+    elseif ($livenessProbe.Status -ge 500) {
+        Write-Verdict -Check 'application-liveness' -Verdict 'fail' -Detail 'application-returned-server-error'
+        Write-Output "remedy=$livenessRemedy"
+    }
+    else {
+        Write-Verdict -Check 'application-liveness' -Verdict 'pass' -Detail 'application-responded-without-server-error'
+    }
+}
+
 if ($Assertion -ceq 'Posture') {
     Write-Verdict -Check 'challenge-shape' -Verdict 'not-executed' -Detail 'unspecified'
 }

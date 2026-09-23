@@ -805,3 +805,40 @@ Ingestion confirmed for all four roles across `AppRequests` and `AppTraces`. Bec
 | BFF root after redeploy | 200 |
 | Owned API called directly without a token | 401 |
 | Telemetry rows for all four roles | present |
+
+## Remaining Work Items and Demonstration Walkthrough: 2026-09-23
+
+Closed the code-level and deployment-level work items left open after the downstream token acquisition fix, and wrote the end-to-end demonstration walkthrough at the top of the root README.
+
+### Modified
+
+* README.md - Added the "Live BFF demonstration: every step and what it proves" section directly beneath the H1, ahead of the existing core-artifact pointer. Covers the four deployed sites and their roles, the two app registrations, ten walkthrough steps each paired with what it establishes, the observed `/api/profile` payload with a field-by-field reading, what the deployment demonstrates for GPD Central, an explicit statement of what it does not demonstrate, and reproduction commands.
+* docs/configuration-contract.md - Added a "Reference BFF app settings" section enumerating `DownstreamApi__Scopes__0`, `ProxyPolicy__AllowedDestinationOrigins__0`, the YARP destination address key, `DataProtection__KeyRingPath`, `DataProtection__ProtectKeysWithDpapi`, `DistributedCache__Redis__ConnectionString`, `Authentication__Mode`, and `Authentication__AllowedTenantIds__0`, each with purpose and whether it is required outside Development and PoC. Recorded the three telemetry settings and the workspace-based query constraint. Closes WI-15 and WI-25.
+* poc/bff-yarp-net10/Program.cs - Made DPAPI key ring encryption opt-in through `DataProtection:ProtectKeysWithDpapi`, defaulting to off. Unconditional DPAPI on Windows is wrong for the App Service host: the worker runs without a loaded user profile, so user-scoped DPAPI fails, and machine-scoped keys cannot be read by a second instance sharing the key ring.
+* poc/bff-yarp-net10/Croesus.BffYarp.csproj - Pinned `RuntimeIdentifiers`, `PublishRuntimeIdentifier`, `PublishSelfContained`, and `UseAppHost` so `dotnet publish` produces a self-contained win-x64 package without command-line flags. Applies to publish only, so build and test still run on the developer's architecture. Closes WI-26.
+* poc/owned-api-net10/Croesus.OwnedApi.csproj - Added the matching `PublishRuntimeIdentifier` so both .NET 10 projects pin the publish target identically.
+* poc/bff-yarp-net10/Tests/FakeTokenAcquisition.cs - Added `RequireNamedScheme`, which throws on a null or empty authentication scheme for both user-token methods. Reproduces IDW10503 at the point the real library raises it, so the defect that reached production now fails in the suite. Closes WI-36.
+* poc/bff-yarp-net10/Tests/ProtocolNegativeTests.cs - Added `AuthorizeRequest_AsksForTheFormPostResponseMode`, asserting `response_mode=form_post` and `response_type=code` on the authorize request. Pins the mode that works around the IIS 2048-byte query string limit so a revert fails in the suite rather than at interactive sign-in. Closes WI-35.
+* scripts/verify-ingress.ps1 - Added a `-LivenessPath` parameter and an `application-liveness` check that fails on HTTP 5xx, with its own remedy separating an application fault from an ingress fault. Added three verdict details to the closed allowlist. Extended the .NOTES block to record that the BFF challenges at `/bff/login` rather than at its root. Closes WI-27 and WI-28.
+
+### Azure changes
+
+* Set `DataProtection__KeyRingPath` to `D:\home\data\croesus-bff-keys` on `croesus-bff-a3v24wppuvd34-bff`. Verified through Kudu that the key ring now contains a persisted key file. Closes WI-33.
+* Created action group `croesus-bff-poc-ag` and two metric alert rules on `croesus-bff-poc-ai`: `croesus-bff-poc-failed-requests` and `croesus-bff-poc-server-exceptions`, both severity 2 over a five-minute window. Closes WI-38.
+
+### Validation
+
+* `dotnet test poc/bff-yarp-net10/Tests/Croesus.BffYarp.Tests.csproj` passed 58 of 58.
+* `dotnet test poc/owned-api-net10/Tests/Croesus.OwnedApi.Tests.csproj` passed 27 of 27.
+* `dotnet publish poc/bff-yarp-net10/Croesus.BffYarp.csproj -c Release` with no RID flags produced a self-contained win-x64 package, confirmed by the presence of both the apphost and `System.Private.CoreLib.dll`.
+* `scripts/test-provision-classic-net-bff-poc-static.ps1` and `scripts/test-classic-net-bff-deployment-entra-static.ps1` both passed.
+* `scripts/verify-ingress.ps1` against the live BFF with `-ChallengePath /bff/login` reported 8 passes and 0 failures.
+* Live probes: `/` returned 200, `/bff/login` returned 302 to the expected Entra authorize endpoint, `/api/profile` returned a bounded 401.
+
+## Additional or Deviating Changes
+
+* The first deployment attempt of the Data Protection change reported success at the CLI but recorded `status=3` at the Kudu deployments endpoint, which is Failed rather than Success in the Kudu status enum. The stale build remained in place, and the newly applied `DataProtection__KeyRingPath` activated unconditional DPAPI on it, so `/bff/login` returned HTTP 500 while the site root still returned 200.
+  * Reason for the deviation: the deployment status enum was misread. The redeploy reported `status=4` and the route recovered.
+  * This is the condition WI-27 was written for, and the new liveness check was the thing that surfaced it. The check was validated by the defect it was built to catch rather than by a contrived case.
+* `DataProtection:ProtectKeysWithDpapi` was introduced rather than removing the DPAPI call outright, so the protection remains available for a host where it is appropriate and is merely no longer the default.
+* WI-37, asserting protocol behaviour against a real identity provider, remains open. It requires a live-tenant integration harness rather than a code change, and the response-mode regression test narrows but does not close the gap it describes.

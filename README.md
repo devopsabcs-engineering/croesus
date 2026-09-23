@@ -1,5 +1,175 @@
 # Croesus / GPD Central — Entra App Registration & SSO Conditional Access Analysis
 
+There are two entry points. For the running proof of the Backend-for-Frontend shape, follow the walkthrough immediately below. For the findings, the open questions, and the nine remediation routes, jump to [Three-way session findings and available routes](assets/croesus-3way-session-findings.md).
+
+## Live BFF demonstration: every step and what it proves
+
+Q8 and Q15 both turn on a single question: does the browser ever hold an OAuth token, or does a backend redeem the code, retain the tokens, and mediate every downstream call? Croesus asserts the second shape. Rather than argue the shape in the abstract, this repository deploys a working instance of it and produces evidence from two independent vantage points.
+
+Every step below has been executed against live Microsoft Entra in the PoC tenant `MngEnvMCAP675646`. The negative controls are part of the demonstration, not an afterthought: an assertion that survives only because nothing was ever tested is not evidence.
+
+### What is deployed
+
+Four Windows App Service sites sit in the resource group `croesus-bff-poc-rg` (Canada East), behind one B1 plan.
+
+| Site | Target framework | Role in the demonstration |
+|------|------------------|---------------------------|
+| `croesus-bff-a3v24wppuvd34-bff` | .NET 10 | The Backend-for-Frontend. Holds the session, redeems the code, acquires and forwards downstream tokens through YARP. |
+| `croesus-bff-a3v24wppuvd34-api` | .NET 10 | The owned downstream API. Validates audience and delegated scope independently of the proxy. |
+| `croesus-bff-a3v24wppuvd34-modern` | .NET 10 | The supported destination half of the R8/R9 comparison. |
+| `croesus-bff-a3v24wppuvd34-legacy` | .NET Framework 4.8 | The classic half of the comparison, standing in for GPD Central's reported 4.5.2 stack. |
+
+Two app registrations carry the flow. The web client `3ee7b866-1d40-4746-a880-f7fda6d2d53e` is a confidential `web` registration holding a client secret that never leaves the server. The resource registration `7c2e2d88-88c1-4c3a-a317-5eac41200a80` publishes `api://7c2e2d88-88c1-4c3a-a317-5eac41200a80/access_as_user`, issues v2 access tokens, and pre-authorizes only the web client.
+
+### Step 1. Load the BFF root anonymously
+
+Browse to `https://croesus-bff-a3v24wppuvd34-bff.azurewebsites.net/`.
+
+The page returns HTTP 200 without a sign-in redirect. A BFF that redirects every anonymous byte to the identity provider cannot serve a landing page, and cannot be told apart from a broken one. This establishes the baseline that the site is healthy before any authentication assertion is made.
+
+### Step 2. Call the protected API path without a session
+
+```powershell
+Invoke-WebRequest -Uri 'https://croesus-bff-a3v24wppuvd34-bff.azurewebsites.net/api/profile' -SkipHttpErrorCheck
+```
+
+The response is HTTP 401 carrying a bounded JSON body that names `interaction_required`. It is not a 302 to `login.microsoftonline.com`.
+
+This is a deliberate design decision with a visible cost. The application sets the cookie scheme as its default challenge, so an unauthenticated `fetch` receives a machine-readable refusal instead of an HTML sign-in page rendered into a JSON parser. That same decision caused a production defect later in this walkthrough, which is recorded rather than hidden.
+
+### Step 3. Call the owned API directly, with no token at all
+
+```powershell
+Invoke-WebRequest -Uri 'https://croesus-bff-a3v24wppuvd34-api.azurewebsites.net/api/profile' -SkipHttpErrorCheck
+```
+
+The response is HTTP 401 from the API itself.
+
+This is the first negative control. The API is independently protected, not merely hidden behind the proxy. Without this step, a successful proxied call would prove only that the proxy forwards traffic, and nothing about whether the downstream resource enforces anything.
+
+### Step 4. Sign in
+
+Browse to `https://croesus-bff-a3v24wppuvd34-bff.azurewebsites.net/bff/login`.
+
+The redirect to Entra carries `response_type=code`, `response_mode=form_post`, PKCE, and a single-tenant authority. The authorization code and its downstream scopes return in the request body rather than the URL.
+
+That response mode is not cosmetic. IIS rejects any query string longer than 2048 bytes with HTTP 404.15 and a 103-byte stock body, before .NET sees the request at all. An authorization code carrying custom API scopes crosses that limit, so query-mode callbacks failed at interactive sign-in while every synthetic test stayed green. A regression test now pins the mode so a revert fails in the suite instead of in the browser.
+
+The request also asks for the `amr` and `auth_time` optional claims, which is what lets the evidence surface later report how the user authenticated rather than merely that they did.
+
+### Step 5. Inspect what the browser received
+
+After the callback completes, the browser holds one cookie: `__Host-Croesus.BffYarp.Session`. It is `HttpOnly`, `Secure`, `SameSite=Lax`, host-prefixed, and its value is an opaque key into a server-side ticket store. No access token, refresh token, or ID token is present in the cookie, in `localStorage`, or anywhere reachable by JavaScript.
+
+This is the claim Q15 asks Croesus to substantiate, made observable.
+
+### Step 6. Call the API path again, now with a session
+
+Reload `https://croesus-bff-a3v24wppuvd34-bff.azurewebsites.net/api/profile`.
+
+The request crosses `ProxyBoundaryMiddleware`, which runs five checks in order before anything is forwarded: the path must be a guarded route, the method must be on the allowlist or the response is 405, the caller must be authenticated or the response is a bounded interaction-required result, a state-changing method must carry a valid antiforgery token or the response is 400, and a delegated access token must be acquired successfully or the response is 502 with nothing forwarded. Only then does YARP forward the request, and only to an origin on the destination allowlist.
+
+The token acquisition names the OpenID Connect scheme explicitly. Leaving it unnamed makes Microsoft.Identity.Web resolve the application's default scheme, which here is `Cookies`, find no Entra options registered under it, and throw `IDW10503` at request time. That defect reached production because the token acquisition test double accepted any scheme, including none. The double now refuses an unnamed scheme, so the same mistake fails in the suite.
+
+### Step 7. Read what the API says about the call
+
+```json
+{
+  "audience": "7c2e2d88-88c1-4c3a-a317-5eac41200a80",
+  "issuer": "https://login.microsoftonline.com/aa93b9d9-037d-4f08-a26d-783cff0e2369/v2.0",
+  "tenantId": "aa93b9d9-037d-4f08-a26d-783cff0e2369",
+  "subjectObjectId": "b785230a-4af4-418a-acd9-aea99894d37a",
+  "callingApplicationId": "3ee7b866-1d40-4746-a880-f7fda6d2d53e",
+  "scopes": [
+    "access_as_user"
+  ],
+  "receivedCookie": false
+}
+```
+
+This payload is the centre of the demonstration. Each field answers a different question.
+
+| Field | What it establishes |
+|-------|---------------------|
+| `audience` | The token was minted for the owned API, not for Microsoft Graph and not for the web application. The audience boundary is real, not asserted. It is the bare client ID because the resource requests v2 access tokens; a v1 token would carry the `api://` URI instead. |
+| `issuer` | The v2.0 endpoint of the expected tenant, so the authority is the intended one. |
+| `callingApplicationId` | The `azp` claim, showing the API exactly which application called it. A second client could not impersonate the first. |
+| `scopes` | A delegated custom scope, not `.default` and not an application permission. The call carries user context. |
+| `receivedCookie` | The headline. The browser's session cookie did not reach the API. The BFF terminated it and minted a fresh bearer token for the hop. |
+
+The last row is what separates a genuine Backend-for-Frontend from a reverse proxy that merely relays browser credentials downstream.
+
+### Step 8. Read what the BFF says about the same call
+
+Load `https://croesus-bff-a3v24wppuvd34-bff.azurewebsites.net/bff/evidence`.
+
+The BFF reports its own account: token custody and the detail behind it, the session cookie's hardening flags as actually configured rather than as intended, the authentication method and time drawn from `amr` and `auth_time`, the granted delegated scopes, and one sanitized record per token acquisition carrying resource, granted scopes, token source, expiry, and outcome.
+
+The surface is an allowlist, not a claims dump. It deliberately omits access tokens, refresh tokens, authorization codes, client secrets, ID token fragments, and cookie values. It also declines to claim an On-Behalf-Of exchange, because this application performs none.
+
+Steps 7 and 8 matter jointly. The API's account and the BFF's account are produced by separate processes with separate code paths, and they agree.
+
+### Step 9. Sign out
+
+Post to `/bff/logout` with a valid antiforgery token, obtainable from `/bff/antiforgery`.
+
+The server-side ticket is destroyed, so the previously captured cookie stops working even though the browser still holds the same bytes. Session lifetime is a server decision, not a client one.
+
+### Step 10. Observe the run in telemetry
+
+All four sites report to the workspace-based Application Insights component `croesus-bff-poc-ai`.
+
+```powershell
+$wsid = az monitor log-analytics workspace show -g croesus-bff-poc-rg -n croesus-bff-poc-law --query customerId -o tsv
+az monitor log-analytics query -w $wsid --analytics-query "union AppRequests,AppTraces,AppDependencies,AppExceptions | where TimeGenerated > ago(30m) | summarize n=count(), lastSeen=max(TimeGenerated) by Type, AppRoleName" -o table
+```
+
+Query the Log Analytics workspace directly. A workspace-based component returns no rows from `az monitor app-insights query`, which reads as an absence of telemetry when the real cause is the wrong query target. Two metric alert rules now fire on failed requests and server-side exceptions, because every ingress check in this repository once passed against a site that was returning HTTP 500.
+
+### What this demonstrates for GPD Central
+
+The deployment establishes that a confidential `web` registration, a server-held token cache, an opaque session cookie, and a proxied delegated call to a custom API compose into a working system on supported .NET, and that the resulting shape is externally observable. If GPD Central's AWS backend redeems the code and retains tokens as Croesus reports, this is the registration shape that matches it, and these are the artifacts that would settle Q8 and Q15 without access to Croesus source code.
+
+The comparison pair matters separately. The .NET Framework 4.8 site and the .NET 10 site exist so the R8/R9 discussion has a running reference on both sides rather than a projection.
+
+### What it does not demonstrate
+
+Setting limits is part of the evidence discipline used throughout this repository.
+
+* No On-Behalf-Of exchange occurs anywhere in this system, and none is claimed. The BFF acquires a delegated token for the owned API directly.
+* The PoC tenant is not the customer tenant. Nothing here changes Desjardins Conditional Access, and the guardrail below still stands.
+* The distributed cache is in-process. Sessions and the token cache do not currently span instances, which is why the configuration validator refuses to start outside Development or PoC without Redis. The Data Protection key ring is persisted to App Service storage, so it is no longer the weaker half of that pair.
+* The synthetic protocol tests replace Microsoft.Identity.Web's own code redemption, so they exercise state, correlation, nonce, and callback replay, and they are not evidence about Entra's single-use enforcement of an authorization code.
+* Three production defects in a row, the IIS query-string rejection, `IDW10503`, and a DPAPI key ring encryption failure, were invisible to a suite built entirely on test doubles. Each now has regression coverage or a deployment-time check, and the pattern is the reason live execution is treated as mandatory rather than confirmatory.
+
+### Reproduce it
+
+```powershell
+pwsh scripts/provision-classic-net-bff-poc.ps1
+dotnet test poc/bff-yarp-net10/Tests/Croesus.BffYarp.Tests.csproj
+dotnet test poc/owned-api-net10/Tests/Croesus.OwnedApi.Tests.csproj
+```
+
+The publish runtime identifier is pinned in the project files, so a Windows ARM64 developer machine cannot produce a package the x64 App Service worker refuses to load.
+
+```powershell
+dotnet publish poc/bff-yarp-net10/Croesus.BffYarp.csproj -c Release -o publish
+```
+
+Verify the deployment afterwards. The BFF challenges at `/bff/login` rather than at its root, so the challenge path is explicit.
+
+```powershell
+pwsh scripts/verify-ingress.ps1 `
+  -ResourceGroupName croesus-bff-poc-rg `
+  -AppName croesus-bff-a3v24wppuvd34-bff `
+  -ExpectedClientId 3ee7b866-1d40-4746-a880-f7fda6d2d53e `
+  -ChallengePath /bff/login
+```
+
+The verifier separates DNS, routing, authorization, challenge shape, ingress posture, and application liveness, because those six failures otherwise present identically to an operator. The liveness assertion exists because a deployment can report success while every request faults, and that exact condition occurred during this work: enabling the persisted key ring against a stale build turned on DPAPI encryption, which fails on an App Service worker with no loaded user profile, and the site returned HTTP 500 on `/bff/login` while every ingress check still passed.
+
+The [classic .NET BFF PoC guide](docs/classic-net-bff-poc.md) carries the full provisioning, teardown, and configuration contract, and [the configuration contract](docs/configuration-contract.md) enumerates every app setting the BFF and the owned API read.
+
 ## ➤ Start here: [Three-way session findings and available routes](assets/croesus-3way-session-findings.md)
 
 > [!IMPORTANT]

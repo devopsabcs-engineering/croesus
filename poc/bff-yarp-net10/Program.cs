@@ -69,7 +69,11 @@ var keyRingPath = builder.Configuration["DataProtection:KeyRingPath"];
 if (!string.IsNullOrWhiteSpace(keyRingPath))
 {
     dataProtection.PersistKeysToFileSystem(new DirectoryInfo(keyRingPath));
-    if (OperatingSystem.IsWindows())
+    // DPAPI is opt-in because it is wrong for the usual Windows host here: an App Service worker runs without a
+    // loaded user profile, so user-scoped DPAPI fails at startup, and machine-scoped keys cannot be read by a
+    // second instance sharing the same key ring.
+    if (OperatingSystem.IsWindows()
+        && builder.Configuration.GetValue("DataProtection:ProtectKeysWithDpapi", defaultValue: false))
     {
         dataProtection.ProtectKeysWithDpapi();
     }

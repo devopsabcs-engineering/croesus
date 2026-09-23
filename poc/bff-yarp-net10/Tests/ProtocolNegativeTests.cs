@@ -258,6 +258,22 @@ public sealed class ProtocolNegativeTests
             value => value.StartsWith("__Host-Croesus.BffYarp.Session=", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task AuthorizeRequest_AsksForTheFormPostResponseMode()
+    {
+        using var factory = new SyntheticOidcFactory();
+        var client = factory.CreateSecureClient();
+
+        var response = await client.GetAsync("/bff/login");
+        var query = HttpUtility.ParseQueryString(response.Headers.Location!.Query);
+
+        // In query mode the code and its downstream scopes ride back in the URL, and IIS rejects anything past
+        // 2048 bytes with a 404.15 before the application is reached. That failure only appears at interactive
+        // sign-in against real Entra, so the mode is pinned here rather than rediscovered in the browser.
+        Assert.Equal("form_post", query["response_mode"]);
+        Assert.Equal("code", query["response_type"]);
+    }
+
     private static async Task<(string State, string Nonce)> StartSignInAsync(HttpClient client)
     {
         var response = await client.GetAsync("/bff/login");
@@ -270,7 +286,6 @@ public sealed class ProtocolNegativeTests
         Assert.False(string.IsNullOrEmpty(nonce));
         return (state, nonce);
     }
-
     /// <summary>Delivers the callback the way the identity provider does, as a form post.</summary>
     private static Task<HttpResponseMessage> PostCallbackAsync(HttpClient client, string? state)
     {

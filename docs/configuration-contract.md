@@ -51,6 +51,23 @@ Each row below names one value, where it is defined, and every component that re
 > [!NOTE]
 > `BFF_CLIENT_ID` belongs to the reference back-end-for-frontend in [../poc/bff-yarp-net10](../poc/bff-yarp-net10), which is a separate registration from the API and the SPA. Its redirect URIs are derived from `BFF_BASE_URI` in [../scripts/provision-app-registrations.sh](../scripts/provision-app-registrations.sh), whose default names the dedicated BFF site rather than the existing comparison apps. `ingressMode` and `appServicePlanSkuName` govern the comparison PoC in [../infra/poc/main.bicep](../infra/poc/main.bicep) only; neither reaches the SPA or the API. Private ingress requires `B1` or better, and the template refuses the combination at deploy time on `F1` or `D1`.
 
+## Reference BFF app settings
+
+The keys below are read only by the reference back-end-for-frontend and the owned downstream API in [../poc/bff-yarp-net10](../poc/bff-yarp-net10) and [../poc/owned-api-net10](../poc/owned-api-net10). They do not reach the SPA or the demonstration API, so they sit outside the table above. Every one is set as an App Service application setting using the double-underscore form that maps onto a configuration section.
+
+| App setting | Configuration key | Purpose | Required outside Development and PoC |
+| --- | --- | --- | --- |
+| `DownstreamApi__Scopes__0` | `DownstreamApi:Scopes:0` | The delegated scope the BFF requests for the owned API, in the form `api://<API app ID>/access_as_user`. The resource portion also determines what the evidence surface reports as the acquisition target. | Yes |
+| `ProxyPolicy__AllowedDestinationOrigins__0` | `ProxyPolicy:AllowedDestinationOrigins:0` | Origin allowlist enforced before a request is forwarded. A destination absent from this list is refused rather than proxied. | Yes |
+| `ReverseProxy__Clusters__owned-api__Destinations__primary__Address` | `ReverseProxy:Clusters:owned-api:Destinations:primary:Address` | The YARP destination address for the owned API cluster. It must resolve to an origin present in the allowlist above. | Yes |
+| `DataProtection__KeyRingPath` | `DataProtection:KeyRingPath` | Directory holding the Data Protection key ring. On Windows App Service, use a path under `D:\home\data` so keys survive restart and span instances. An unset value leaves the key ring ephemeral, and the configuration validator refuses to start. | Yes |
+| `DataProtection__ProtectKeysWithDpapi` | `DataProtection:ProtectKeysWithDpapi` | Opt-in DPAPI encryption of the key ring, default `false`. Leave it unset on App Service: the worker runs without a loaded user profile, so user-scoped DPAPI fails at startup, and machine-scoped keys cannot be read by a second instance. | No |
+| `DistributedCache__Redis__ConnectionString` | `DistributedCache:Redis:ConnectionString` | Backing store for the server-side session ticket store and the MSAL token cache. Unset, both fall back to an in-process cache that cannot span instances or survive a restart. | Yes |
+| `Authentication__Mode` | `Authentication:Mode` | Selects the authentication posture the BFF applies at startup. | Yes |
+| `Authentication__AllowedTenantIds__0` | `Authentication:AllowedTenantIds:0` | Single-tenant issuer allowlist enforced by the tenant policy during token validation, independent of the authority configured for the authority endpoint. | Yes |
+
+Telemetry uses three further settings on each PoC site: `APPLICATIONINSIGHTS_CONNECTION_STRING`, `ApplicationInsightsAgent_EXTENSION_VERSION` set to `~3`, and `XDT_MicrosoftApplicationInsights_Mode` set to `recommended`. The component `croesus-bff-poc-ai` is workspace-based and writes into `croesus-bff-poc-law`, which is why telemetry must be read through the Log Analytics workspace rather than through `az monitor app-insights query`.
+
 <!-- -->
 
 > [!NOTE]

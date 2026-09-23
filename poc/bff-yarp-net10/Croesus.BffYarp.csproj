@@ -9,6 +9,13 @@
     <UserSecretsId>croesus-bff-yarp-poc</UserSecretsId>
     <DefaultItemExcludes>$(DefaultItemExcludes);Tests/**</DefaultItemExcludes>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- App Service Windows workers are x64. Left to the host, an ARM64 developer machine publishes a package
+         the worker cannot load, and the site fails after a deployment that reported success. These apply to
+         publish only, so local build and test still run on the developer's own architecture. -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <PublishRuntimeIdentifier>win-x64</PublishRuntimeIdentifier>
+    <PublishSelfContained>true</PublishSelfContained>
+    <UseAppHost>true</UseAppHost>
   </PropertyGroup>
 
   <ItemGroup>
