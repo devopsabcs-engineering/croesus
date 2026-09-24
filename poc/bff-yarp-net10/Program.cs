@@ -1,4 +1,5 @@
 using Croesus.BffYarp.Security;
+using System.IdentityModel.Tokens.Jwt;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
@@ -8,6 +9,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Options;
 using Microsoft.Identity.Web;
 using Microsoft.Identity.Web.TokenCacheProviders;
+using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Logging;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
@@ -16,6 +18,12 @@ using Yarp.ReverseProxy.Transforms;
 var builder = WebApplication.CreateBuilder(args);
 
 IdentityModelEventSource.ShowPII = false;
+
+// Claim names are reported as the issuer wrote them. OpenIdConnectOptions.MapInboundClaims only reaches the
+// handler instances the options object created, and Microsoft.Identity.Web installs its own, so the legacy
+// SOAP-era rename still fired and turned amr into a claim nothing downstream was looking for.
+JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
+JsonWebTokenHandler.DefaultInboundClaimTypeMap.Clear();
 
 // The policies are resolved from the container immediately after the host is built, which is the first
 // point at which configuration is fully composed. A misconfigured destination or an unmeasured forwarding

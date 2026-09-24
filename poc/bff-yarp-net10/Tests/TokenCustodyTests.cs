@@ -101,6 +101,16 @@ public sealed class TokenCustodyTests(BffFactory factory) : IClassFixture<BffFac
     }
 
     [Fact]
+    public void InboundClaimNamesAreNotRewritten()
+    {
+        // The option alone did not stop the rename, so the static maps are the assertion that matters.
+        _ = factory.Services;
+
+        Assert.Empty(System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler.DefaultInboundClaimTypeMap);
+        Assert.Empty(Microsoft.IdentityModel.JsonWebTokens.JsonWebTokenHandler.DefaultInboundClaimTypeMap);
+    }
+
+    [Fact]
     public void SessionStoreIsTheServerTicketStore()
     {
         var options = factory.Services

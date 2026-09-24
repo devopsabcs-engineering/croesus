@@ -891,3 +891,26 @@ Closed the code-level and deployment-level work items left open after the downst
 * The `amr` optional claim was also applied to the live registration `3ee7b866-1d40-4746-a880-f7fda6d2d53e` so the running demo benefits without a full reprovision.
   * Final confirmation that the claim now appears on the evidence page needs an interactive sign-in, which cannot be performed here.
 * WI-39 was not implemented. The application already selects a shared cache when `DistributedCache:Redis:ConnectionString` is present and refuses the process-local fallback outside Development and Poc, so the remaining work is a paid resource plus an authentication design choice. Both are recorded as ID-03 and WI-42.
+
+## Session Addendum: 2026-09-24, second pass
+
+### Modified
+
+* poc/bff-yarp-net10/Program.cs - Clear the static inbound claim type maps at startup so claim names survive as the issuer wrote them
+* poc/bff-yarp-net10/Tests/TokenCustodyTests.cs - Assert both inbound claim type maps are empty
+* scripts/provision-classic-net-bff-deployment.ps1 - Correct the recorded cause of the missing `amr` claim and drop the unproven assertion
+* .github/workflows/deploy-croesus.yml - Add a concurrency group so deployments queue instead of racing
+* .github/workflows/classic-net-bff-poc.yml - Add a concurrency group so deployments queue instead of racing
+
+### Added
+
+* .github/dependabot.yml - Schedule npm, NuGet, and GitHub Actions updates with grouping
+* scripts/assert-deployment-succeeded.ps1 - Fail the workflow when Kudu reports a deployment status other than success
+
+## Additional or Deviating Changes
+
+* A temporary claim-name diagnostic was added to the BFF, deployed, read, and then removed.
+  * The evidence surface reports an absent claim as absent, which cannot distinguish a claim the issuer withheld from one the pipeline dropped. Logs settled the question without widening the typed allowlist.
+  * The paired `Diagnostics__LogIdTokenClaimNames` app setting was deleted after the reading.
+* Dependabot pull requests 7 and 9 are now redundant. Merging the parent packages in pull requests 8 and 10 carried the patched transitive versions.
+* Dependabot pull requests 6 and 11 touch the authentication path and warrant a test run before merge.

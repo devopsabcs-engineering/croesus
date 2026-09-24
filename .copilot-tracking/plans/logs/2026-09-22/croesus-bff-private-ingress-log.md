@@ -608,3 +608,24 @@ Decisions I made under delegated authority, where the user answered "you may if 
 ## Suggested Follow-On Work
 
 * WI-43: Decide whether the evidence surface should report the claim types present in the session ticket, names only and no values. Priority medium. Dependency: none. Without it, an empty evidence field cannot be distinguished from a claim the issuer never sent, which is the exact ambiguity blocking DD-35. `EvidenceResponse` is deliberately an allowlist rather than a claims dump, so widening it is a design decision rather than a fix.
+
+## Session Addendum: 2026-09-24, third pass
+
+### Resolved Deviations
+
+* DD-35 resolved: the `amr` claim was issued by Microsoft Entra ID all along and renamed before anything could read it.
+  * A temporary diagnostic logged ID token claim names at token validation and showed the issued set as `amr, aud, auth_time, exp, iat, iss, name, nbf, nonce, oid, preferred_username, rh, sid, sub, tid, uti, ver`.
+  * The same principal carried `http://schemas.microsoft.com/claims/authnmethodsreferences`, alongside renamed `sub`, `oid`, and `tid`. That signature is `DefaultInboundClaimTypeMap`.
+  * `auth_time` rendered throughout because it has no entry in that map. The single claim that disappeared was the single claim the map rewrites.
+  * `OpenIdConnectOptions.MapInboundClaims` writes through only to the handler instances the options object built for itself. Microsoft.Identity.Web installs its own handler, which kept the default of `true`. The option read as correct and had no effect.
+  * Fix: clear `JwtSecurityTokenHandler.DefaultInboundClaimTypeMap` and `JsonWebTokenHandler.DefaultInboundClaimTypeMap` at startup, before any handler is constructed.
+  * Verified live: the evidence surface reports `fido mfa` with a current `auth_time`.
+
+* DD-34 closed: `include_granular_amr` is neither the cause nor the cure for the OIDC case. The registration keeps it as a harmless request, and the optional claim entry itself was always correct.
+
+### Suggested Follow-On Work
+
+* WI-44: Assert claim behaviour, not configuration flags (medium)
+  * Source: DD-35 resolution
+  * The suite asserted `options.MapInboundClaims == false` and passed while the rename was active. A test now asserts both static maps are empty. Prefer behavioural assertions wherever a framework option delegates to an instance that another library may replace.
+  * Dependency: none
