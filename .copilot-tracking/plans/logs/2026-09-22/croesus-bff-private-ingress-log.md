@@ -586,3 +586,25 @@ Decisions I made under delegated authority, where the user answered "you may if 
 ## Suggested Follow-On Work
 
 * WI-42: Decide how the BFF authenticates to a shared cache before provisioning one. Priority medium. Dependency: ID-03. An access key in an app setting is the shortest path but adds a secret to a stack that currently holds only one. Microsoft Entra authentication for Azure Cache for Redis removes the secret but needs the `Microsoft.Azure.StackExchangeRedis` extension and a managed identity role assignment. WI-39 cannot be built until this is settled.
+
+## Session Addendum: 2026-09-24, second pass
+
+### Corrected Entries
+
+* DD-34 correction: the entry recorded `include_granular_amr` as the cause of the missing `amr` claim. That is wrong. The optional claims reference documents `include_granular_amr` as the property a **SAML** application must add to request AMR. For OIDC, `amr` sits in the v2.0 specific optional claims set and needs only the plain optional claim, which the registration already carried. The property was applied anyway because it is harmless and is the documented AMR lever, but it is not the explanation.
+
+### New Discrepancies
+
+* DD-35: `amr` is withheld while `auth_time` is emitted from the same optional claims collection.
+  * Plan specifies: the evidence surface reports the authentication method carried by the ID token.
+  * Implementation differs: both claims are requested identically under `optionalClaims.idToken`. `auth_time` arrives and renders. `amr` does not. Ruled out this session: a stale session ticket, because two interactive sign-ins at 15:04 and 15:06 postdate the registration change and still produced no value; inbound claim type renaming, because `MapInboundClaims` is false; a broken read path, because `ReadAuthenticationMethod` is structurally identical to `ReadAuthenticationTime` and the test suite injects `amr` successfully; claim filtering in the pipeline, because nothing between token validation and the evidence collector removes claims; and tenant policy interference, because the service principal carries no claims mapping policy and no home realm discovery policy.
+  * Rationale: the remaining unknown is whether Microsoft Entra ID omits the claim or something in token materialization drops it. Separating the two needs sight of the claim types present in the ticket, which the evidence surface deliberately does not expose.
+
+### User Decisions
+
+* ID-03: shared cache for WI-39. Option C selected.
+  * Rationale: the plan is a single B1 instance, so a process-local cache cannot exhibit the failure a shared cache would prevent. The application already selects a shared cache when `DistributedCache:Redis:ConnectionString` is present and refuses the process-local fallback outside Development and Poc, so the code path is ready if the decision changes. Provisioning a paid resource to fix a constraint the topology cannot demonstrate buys nothing.
+
+## Suggested Follow-On Work
+
+* WI-43: Decide whether the evidence surface should report the claim types present in the session ticket, names only and no values. Priority medium. Dependency: none. Without it, an empty evidence field cannot be distinguished from a claim the issuer never sent, which is the exact ambiguity blocking DD-35. `EvidenceResponse` is deliberately an allowlist rather than a claims dump, so widening it is a design decision rather than a fix.
