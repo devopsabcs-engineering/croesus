@@ -55,7 +55,7 @@ The redirect to Entra carries `response_type=code`, `response_mode=form_post`, P
 
 That response mode is not cosmetic. IIS rejects any query string longer than 2048 bytes with HTTP 404.15 and a 103-byte stock body, before .NET sees the request at all. An authorization code carrying custom API scopes crosses that limit, so query-mode callbacks failed at interactive sign-in while every synthetic test stayed green. A regression test now pins the mode so a revert fails in the suite instead of in the browser.
 
-The request also asks for the `amr` and `auth_time` optional claims, which is what lets the evidence surface later report how the user authenticated rather than merely that they did.
+The request also asks for the `amr` and `auth_time` optional claims, which is what lets the evidence surface later report how the user authenticated rather than merely that they did. Asking is necessary and not sufficient. The ASP.NET Core inbound claim type map renames `amr` to a SOAP-era URI before anything reads it, and `OpenIdConnectOptions.MapInboundClaims` never reaches the token handler Microsoft.Identity.Web installs. The application clears both static maps at startup so every claim arrives under the name the issuer wrote.
 
 ### Step 5. Inspect what the browser received
 
@@ -105,6 +105,8 @@ Load `https://croesus-bff-a3v24wppuvd34-bff.azurewebsites.net/bff/evidence`.
 
 The BFF reports its own account: token custody and the detail behind it, the session cookie's hardening flags as actually configured rather than as intended, the authentication method and time drawn from `amr` and `auth_time`, the granted delegated scopes, and one sanitized record per token acquisition carrying resource, granted scopes, token source, expiry, and outcome.
 
+Order matters here. Acquisition records are held per session inside the running process, so `Granted delegated scopes` reads `none recorded` and `Acquisition operations` reads `0` until a proxied call has actually acquired a token. Run step 6 first, then load this page. A deployment restarts the process, which issues a new `Application run` value and empties the records, so a fresh run identifier next to a zero count means the counters were reset rather than that the acquisition failed.
+
 The surface is an allowlist, not a claims dump. It deliberately omits access tokens, refresh tokens, authorization codes, client secrets, ID token fragments, and cookie values. It also declines to claim an On-Behalf-Of exchange, because this application performs none.
 
 Steps 7 and 8 matter jointly. The API's account and the BFF's account are produced by separate processes with separate code paths, and they agree.
@@ -141,6 +143,7 @@ Setting limits is part of the evidence discipline used throughout this repositor
 * The distributed cache is in-process. Sessions and the token cache do not currently span instances, which is why the configuration validator refuses to start outside Development or PoC without Redis. The Data Protection key ring is persisted to App Service storage, so it is no longer the weaker half of that pair.
 * The synthetic protocol tests replace Microsoft.Identity.Web's own code redemption, so they exercise state, correlation, nonce, and callback replay, and they are not evidence about Entra's single-use enforcement of an authorization code.
 * Three production defects in a row, the IIS query-string rejection, `IDW10503`, and a DPAPI key ring encryption failure, were invisible to a suite built entirely on test doubles. Each now has regression coverage or a deployment-time check, and the pattern is the reason live execution is treated as mandatory rather than confirmatory.
+* A fourth defect was worse than invisible. The suite asserted that inbound claim mapping was disabled and passed, while the rename that setting was meant to prevent ran anyway and left the evidence surface reporting the authentication method as absent. The assertion now targets the static claim type maps, which is what governs the behaviour.
 
 ### Reproduce it
 
