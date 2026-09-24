@@ -1,0 +1,55 @@
+version: 2
+
+updates:
+  # The corporate package feed proxy used on developer machines lags the public registry by
+  # several days, so patched versions cannot be resolved locally. Dependabot resolves against
+  # the public registry and is the only path that produces a valid lockfile for these updates.
+  - package-ecosystem: npm
+    directory: /spa
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      build-tooling:
+        patterns:
+          - "vite"
+          - "@vitejs/*"
+          - "typescript"
+          - "@types/*"
+      msal:
+        patterns:
+          - "@azure/msal-*"
+
+  # poc/legacy-net452 is omitted on purpose. It exists to represent a classic .NET Framework
+  # application, so upgrading its packages would destroy the thing it demonstrates.
+  - package-ecosystem: nuget
+    directories:
+      - /api
+      - /api/Tests
+      - /poc/bff-yarp-net10
+      - /poc/bff-yarp-net10/Tests
+      - /poc/modern-net10
+      - /poc/modern-net10/Tests
+      - /poc/owned-api-net10
+      - /poc/owned-api-net10/Tests
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      microsoft-identity:
+        patterns:
+          - "Microsoft.Identity.*"
+      aspnetcore:
+        patterns:
+          - "Microsoft.AspNetCore.*"
+          - "Microsoft.Extensions.*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns:
+          - "*"
