@@ -19,6 +19,13 @@ permissions:
   id-token: write # required for OIDC login to Azure
   contents: read
 
+# Two runs deploying to the same site race each other and OneDeploy rejects the loser with a
+# bare 400. Queue instead of cancelling, because cancelling mid-deploy leaves the site serving
+# a half-installed package.
+concurrency:
+  group: deploy-croesus-production
+  cancel-in-progress: false
+
 env:
   AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
   AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }} # deploy identity (FIC), NOT the API credential

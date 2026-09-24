@@ -56,6 +56,12 @@ permissions:
   contents: read
   id-token: write
 
+# This workflow redeploys the template as well as the packages, so two overlapping runs contend
+# for the same resource group rather than just the same site.
+concurrency:
+  group: classic-net-bff-poc
+  cancel-in-progress: false
+
 env:
   AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
   AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}

@@ -868,3 +868,26 @@ Closed the code-level and deployment-level work items left open after the downst
 
 * `dotnet test` BFF: 82 passed, 0 failed.
 * Deployed to `croesus-bff-a3v24wppuvd34-bff`; root returns 200 and `/bff/login?prompt=login&maxAge=0` returns 302 carrying `prompt=login`, `max_age=0`, `response_mode=form_post`.
+
+## Session Addendum: 2026-09-24
+
+### Added
+
+* `.github/dependabot.yml` - Weekly grouped updates for npm, NuGet, and GitHub Actions. `poc/legacy-net452` is omitted on purpose because its old packages are the thing the demo exhibits.
+* `scripts/assert-deployment-succeeded.ps1` - Reads the Kudu deployment status through the ARM deployments collection and throws unless the newest record reports status 4. `-Since` rejects a record older than the run, so a deploy that shipped nothing cannot pass.
+
+### Modified
+
+* `.github/workflows/deploy-croesus.yml` - Records the deployment start instant, then asserts the status of both sites after the two `webapps-deploy` steps.
+* `.github/workflows/classic-net-bff-poc.yml` - Same assertion for the legacy and modern sites.
+* `scripts/provision-classic-net-bff-deployment.ps1` - Declares the `auth_time` and `amr` optional ID token claims in the registration PATCH body, with `include_granular_amr` on `amr`, and asserts both in `Assert-RegistrationPreflight`.
+* `spa/package-lock.json` - Raised through merged Dependabot pull requests 8 and 10 to postcss 8.5.28, browserslist 4.29.0, nanoid 3.3.19, and baseline-browser-mapping 2.11.25.
+
+### Additional or Deviating Changes
+
+* Automated security fixes were disabled on the repository and no `dependabot.yml` existed, which is why seven alerts had produced zero pull requests. Both were corrected before any package change was attempted.
+  * A local fix was impossible: the configured package feed proxy had not mirrored any of the patched releases, and the public registry is unreachable from this machine, so `npm audit fix` failed with `EALLOWREMOTE`. Dependabot resolves against the public registry and was the only path to a valid lockfile.
+* Two of the four security pull requests were merged rather than all four. Pull requests 7 and 9 became redundant, because postcss 8.5.28 carries the patched nanoid and browserslist 4.29.0 carries the patched baseline-browser-mapping. All eleven alerts report `fixed`.
+* The `amr` optional claim was also applied to the live registration `3ee7b866-1d40-4746-a880-f7fda6d2d53e` so the running demo benefits without a full reprovision.
+  * Final confirmation that the claim now appears on the evidence page needs an interactive sign-in, which cannot be performed here.
+* WI-39 was not implemented. The application already selects a shared cache when `DistributedCache:Redis:ConnectionString` is present and refuses the process-local fallback outside Development and Poc, so the remaining work is a paid resource plus an authentication design choice. Both are recorded as ID-03 and WI-42.

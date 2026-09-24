@@ -555,3 +555,34 @@ Decisions I made under delegated authority, where the user answered "you may if 
 * WI-39: Add a Redis or other shared distributed cache to the PoC so sessions and the MSAL token cache span instances. Priority medium. Dependency: a decision on whether the PoC should demonstrate multi-instance behaviour at all, given the plan is a single B1. The key ring is now persisted, which makes the in-process cache the remaining single-instance constraint.
 * WI-40: Fold the liveness assertion and the correct challenge path into whatever automation calls `verify-ingress.ps1`, so the BFF is verified with `-ChallengePath /bff/login` rather than the default. Priority medium. Dependency: none.
 * WI-41: Treat a Kudu deployment status other than 4 as a failure in any script that deploys a package, rather than reporting the CLI's own exit code. Priority high, because a silently stale build defeats every check downstream of it. Dependency: none.
+
+## Session Addendum: 2026-09-24
+
+### Corrected Entries
+
+* DD-17 correction: the entry withdrew the policy premise entirely after no policy assignment could be found. That conclusion was too strong. The F1 downgrade and the `publicNetworkAccess` flip are reproducible and environmental, recurring on roughly a 24 hour cadence across both stacks. The correct record is that the cause is external to this repository and not attributable to a findable policy assignment, not that the behaviour does not occur.
+
+### New Discrepancies
+
+* DD-33: the BFF web registration's optional claims were configured out of band and absent from infrastructure as code.
+  * Plan specifies: `scripts/provision-classic-net-bff-deployment.ps1` owns the registration shape.
+  * Implementation differs: `optionalClaims` was never part of the PATCH body, so `auth_time` and `amr` survived only because someone set them manually. A rebuild would have silently dropped both.
+  * Rationale: the claims are now declared in the PATCH body and asserted in `Assert-RegistrationPreflight`.
+
+* DD-34: the evidence surface reported `Authentication method: not reported` against a registration that requested `amr`.
+  * Plan specifies: the evidence page reports the authentication method carried by the ID token.
+  * Implementation differs: `amr` is a v2.0 specific optional claim, and Microsoft Entra ID emits it only when the request carries `include_granular_amr` in `additionalProperties`. The registration requested `amr` with an empty `additionalProperties`, so the claim was asked for and never issued. The read path was correct throughout.
+  * Rationale: recorded so an empty evidence field is investigated at the token issuer before the reader.
+
+### Resolved Work Items
+
+* WI-41: closed. `scripts/assert-deployment-succeeded.ps1` reads the Kudu deployment status through the ARM deployments collection, needing no publishing credential, and throws unless the newest record reports status 4. Both workflows call it after every `webapps-deploy` step, and `-Since` rejects a record that predates the run so a deploy that shipped nothing cannot pass. Verified live on the pass path, the stale path, and the multi-site path, then confirmed in run 36008301427.
+
+### User Decisions
+
+* ID-02: `publicNetworkAccess` ownership splits by stack. Option B selected.
+  * Rationale: ID-01 recorded that the template owns `publicNetworkAccess` and that it must not be set imperatively. That stance still holds for the PoC stack, whose pipeline redeploys `infra/poc/main.bicep` on every run and therefore reasserts both the SKU and the ingress posture declaratively. It does not hold for the OBO demo stack, whose pipeline deploys packages without redeploying the template, so a declarative-only stance leaves the drift in place until someone runs a deployment by hand. The OBO stack now reconciles imperatively and idempotently through `scripts/restore-demo-ingress.ps1`. ID-01 is superseded for that stack only.
+
+## Suggested Follow-On Work
+
+* WI-42: Decide how the BFF authenticates to a shared cache before provisioning one. Priority medium. Dependency: ID-03. An access key in an app setting is the shortest path but adds a secret to a stack that currently holds only one. Microsoft Entra authentication for Azure Cache for Redis removes the secret but needs the `Microsoft.Azure.StackExchangeRedis` extension and a managed identity role assignment. WI-39 cannot be built until this is settled.
