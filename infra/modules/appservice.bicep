@@ -46,6 +46,33 @@ param appInsightsConnectionStringSecretName string = 'appinsights-connection-str
 @description('Resource ID of the App Service integration subnet (snet-app) delegated to Microsoft.Web/serverFarms. Only the API site is integrated.')
 param appSubnetId string
 
+// An external governance process returns this subscription's App Service plans to F1 and sets
+// publicNetworkAccess to Disabled on roughly a 24 hour cycle. Both are declared here so that
+// redeploying this template reverses the drift rather than leaving the properties unmanaged,
+// where ARM would preserve whatever the last writer set.
+@description('App Service plan SKU. F1 and D1 cannot host Always On or a private endpoint.')
+@allowed(['F1', 'D1', 'B1', 'B2', 'B3', 'S1', 'S2', 'S3', 'P0v3', 'P1v3', 'P2v3', 'P3v3'])
+param appServicePlanSkuName string = 'B1'
+
+@description('Site-level public ingress. Disabled with no private endpoint makes a site unreachable from every network path, including the SCM endpoint that package deployment uses.')
+@allowed(['Enabled', 'Disabled'])
+param publicNetworkAccess string = 'Enabled'
+
+var appServicePlanSkuTiers = {
+  F1: 'Free'
+  D1: 'Shared'
+  B1: 'Basic'
+  B2: 'Basic'
+  B3: 'Basic'
+  S1: 'Standard'
+  S2: 'Standard'
+  S3: 'Standard'
+  P0v3: 'PremiumV3'
+  P1v3: 'PremiumV3'
+  P2v3: 'PremiumV3'
+  P3v3: 'PremiumV3'
+}
+
 // Build Key Vault secret URIs from the vault NAME only (a non-secret param),
 // so this module does not need a hard dependency on the Key Vault resource and
 // no secret value is ever embedded.
@@ -58,8 +85,8 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2024-04-01' = {
   location: location
   kind: 'linux'
   sku: {
-    name: 'B1'
-    tier: 'Basic'
+    name: appServicePlanSkuName
+    tier: appServicePlanSkuTiers[appServicePlanSkuName]
   }
   properties: {
     reserved: true
@@ -72,6 +99,7 @@ resource spaApp 'Microsoft.Web/sites@2024-04-01' = {
   properties: {
     serverFarmId: appServicePlan.id
     httpsOnly: true
+    publicNetworkAccess: publicNetworkAccess
     siteConfig: {
       linuxFxVersion: 'NODE|20-lts'
       // The SPA is a prebuilt static Vite bundle, not a Node server. Serve the
@@ -103,6 +131,7 @@ resource apiApp 'Microsoft.Web/sites@2024-04-01' = {
   properties: {
     serverFarmId: appServicePlan.id
     httpsOnly: true
+    publicNetworkAccess: publicNetworkAccess
     // Regional VNet integration: outbound traffic (including Key Vault
     // reference resolution) egresses through snet-app so it can reach the
     // Key Vault private endpoint. vnetRouteAllEnabled forces all outbound

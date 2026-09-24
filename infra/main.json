@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.44.1.10279",
-      "templateHash": "17534537513425469743"
+      "version": "0.47.16.16243",
+      "templateHash": "8019184425818418524"
     }
   },
   "parameters": {
@@ -162,8 +162,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.44.1.10279",
-              "templateHash": "9354400126859724609"
+              "version": "0.47.16.16243",
+              "templateHash": "4352738142497308160"
             }
           },
           "parameters": {
@@ -346,8 +346,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.44.1.10279",
-              "templateHash": "7138220402923218438"
+              "version": "0.47.16.16243",
+              "templateHash": "6089084880266525230"
             }
           },
           "parameters": {
@@ -519,8 +519,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.44.1.10279",
-              "templateHash": "16714565526441088316"
+              "version": "0.47.16.16243",
+              "templateHash": "17266980369229216581"
             }
           },
           "parameters": {
@@ -605,9 +605,55 @@
               "metadata": {
                 "description": "Resource ID of the App Service integration subnet (snet-app) delegated to Microsoft.Web/serverFarms. Only the API site is integrated."
               }
+            },
+            "appServicePlanSkuName": {
+              "type": "string",
+              "defaultValue": "B1",
+              "allowedValues": [
+                "F1",
+                "D1",
+                "B1",
+                "B2",
+                "B3",
+                "S1",
+                "S2",
+                "S3",
+                "P0v3",
+                "P1v3",
+                "P2v3",
+                "P3v3"
+              ],
+              "metadata": {
+                "description": "App Service plan SKU. F1 and D1 cannot host Always On or a private endpoint."
+              }
+            },
+            "publicNetworkAccess": {
+              "type": "string",
+              "defaultValue": "Enabled",
+              "allowedValues": [
+                "Enabled",
+                "Disabled"
+              ],
+              "metadata": {
+                "description": "Site-level public ingress. Disabled with no private endpoint makes a site unreachable from every network path, including the SCM endpoint that package deployment uses."
+              }
             }
           },
           "variables": {
+            "appServicePlanSkuTiers": {
+              "F1": "Free",
+              "D1": "Shared",
+              "B1": "Basic",
+              "B2": "Basic",
+              "B3": "Basic",
+              "S1": "Standard",
+              "S2": "Standard",
+              "S3": "Standard",
+              "P0v3": "PremiumV3",
+              "P1v3": "PremiumV3",
+              "P2v3": "PremiumV3",
+              "P3v3": "PremiumV3"
+            },
             "keyVaultDnsSuffix": "[environment().suffixes.keyvaultDns]",
             "certSecretUri": "[format('https://{0}{1}/secrets/{2}', parameters('keyVaultName'), variables('keyVaultDnsSuffix'), parameters('certSecretName'))]",
             "appInsightsConnectionStringSecretUri": "[format('https://{0}{1}/secrets/{2}', parameters('keyVaultName'), variables('keyVaultDnsSuffix'), parameters('appInsightsConnectionStringSecretName'))]"
@@ -620,8 +666,8 @@
               "location": "[parameters('location')]",
               "kind": "linux",
               "sku": {
-                "name": "B1",
-                "tier": "Basic"
+                "name": "[parameters('appServicePlanSkuName')]",
+                "tier": "[variables('appServicePlanSkuTiers')[parameters('appServicePlanSkuName')]]"
               },
               "properties": {
                 "reserved": true
@@ -635,6 +681,7 @@
               "properties": {
                 "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('appServicePlanName'))]",
                 "httpsOnly": true,
+                "publicNetworkAccess": "[parameters('publicNetworkAccess')]",
                 "siteConfig": {
                   "linuxFxVersion": "NODE|20-lts",
                   "appCommandLine": "pm2 serve /home/site/wwwroot --no-daemon --spa",
@@ -667,6 +714,7 @@
               "properties": {
                 "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('appServicePlanName'))]",
                 "httpsOnly": true,
+                "publicNetworkAccess": "[parameters('publicNetworkAccess')]",
                 "virtualNetworkSubnetId": "[parameters('appSubnetId')]",
                 "siteConfig": {
                   "linuxFxVersion": "DOTNETCORE|8.0",
@@ -806,8 +854,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.44.1.10279",
-              "templateHash": "265322481388146934"
+              "version": "0.47.16.16243",
+              "templateHash": "5919060118108617246"
             }
           },
           "parameters": {

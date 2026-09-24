@@ -84,6 +84,13 @@ jobs:
     runs-on: ubuntu-latest
     environment: production # manual gate + environment-scoped variables
     steps:
+      # Must precede the artifact downloads. actions/checkout cleans the workspace by default and
+      # would otherwise delete them. Only the scripts directory is needed; the deployable payloads
+      # arrive as artifacts from the build jobs.
+      - name: Checkout deployment scripts
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
       - name: Download SPA artifact
         uses: actions/download-artifact@v4
         with:
@@ -100,6 +107,16 @@ jobs:
           client-id: ${{ env.AZURE_CLIENT_ID }}
           tenant-id: ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+      # An external governance process disables publicNetworkAccess and returns the plan to F1 on
+      # roughly a 24 hour cycle. Disabled ingress refuses OneDeploy with "Ip Forbidden (CODE: 403)"
+      # even though the site IP rules read Allow all, so the posture is reconciled before the
+      # package deployment rather than after it. Every write is conditional on a read, so a run
+      # against a healthy environment changes nothing.
+      - name: Reconcile demo-ready ingress posture
+        shell: pwsh
+        run: |
+          ./scripts/restore-demo-ingress.ps1 `
+            -AppName '${{ env.SPA_APP_NAME }}', '${{ env.API_APP_NAME }}'
       - name: Deploy SPA
         uses: azure/webapps-deploy@v3
         with:
