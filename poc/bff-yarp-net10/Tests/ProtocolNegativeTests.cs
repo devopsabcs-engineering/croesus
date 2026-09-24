@@ -274,6 +274,39 @@ public sealed class ProtocolNegativeTests
         Assert.Equal("code", query["response_type"]);
     }
 
+    [Fact]
+    public async Task AuthorizeRequest_CarriesTheRequestedFreshnessParameters()
+    {
+        using var factory = new SyntheticOidcFactory();
+        var client = factory.CreateSecureClient();
+
+        var response = await client.GetAsync("/bff/login?prompt=login&maxAge=0");
+        var query = HttpUtility.ParseQueryString(response.Headers.Location!.Query);
+
+        Assert.Equal("login", query["prompt"]);
+        Assert.Equal("0", query["max_age"]);
+    }
+
+    [Theory]
+    [InlineData("prompt=none")]
+    [InlineData("prompt=login%20consent")]
+    [InlineData("maxAge=-1")]
+    [InlineData("maxAge=abc")]
+    [InlineData("maxAge=99999999")]
+    public async Task AuthorizeRequest_DropsFreshnessValuesThisApplicationWillNotSend(string queryString)
+    {
+        using var factory = new SyntheticOidcFactory();
+        var client = factory.CreateSecureClient();
+
+        var response = await client.GetAsync($"/bff/login?{queryString}");
+        var query = HttpUtility.ParseQueryString(response.Headers.Location!.Query);
+
+        // Caller input reaches the authorize request, so anything outside the accepted set is dropped rather
+        // than forwarded. Sign-in still proceeds; only the unmet request is lost.
+        Assert.Null(query["prompt"]);
+        Assert.Null(query["max_age"]);
+    }
+
     private static async Task<(string State, string Nonce)> StartSignInAsync(HttpClient client)
     {
         var response = await client.GetAsync("/bff/login");

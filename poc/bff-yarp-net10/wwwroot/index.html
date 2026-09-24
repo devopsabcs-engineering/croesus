@@ -15,6 +15,11 @@
       log browser. No token, cookie value, authorization code, or protocol payload is available to it.
     </p>
     <p><button id="load" type="button">Load evidence</button></p>
+    <p>
+      <button id="reauthenticate" type="button">Force fresh sign-in</button>
+      <span>Asks the identity provider for <code>prompt=login</code> and <code>max_age=0</code>, then refuses the
+      result unless the returned <code>auth_time</code> is current.</span>
+    </p>
     <p id="status" role="status"></p>
     <dl id="evidence"></dl>
     <form id="logout" hidden>

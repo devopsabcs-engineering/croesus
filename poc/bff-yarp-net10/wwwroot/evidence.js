@@ -72,4 +72,11 @@ async function signOut(event) {
 }
 
 document.getElementById('load').addEventListener('click', loadEvidence);
+
+// A top-level navigation, not a fetch: the identity provider needs to render a credential prompt.
+document.getElementById('reauthenticate').addEventListener('click', () => {
+  statusElement.textContent = 'Requesting a fresh authentication.';
+  window.location.assign('/bff/login?prompt=login&maxAge=0');
+});
+
 logoutForm.addEventListener('submit', signOut);

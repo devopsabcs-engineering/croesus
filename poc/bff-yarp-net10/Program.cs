@@ -139,7 +139,7 @@ builder.Services
 
 builder.Services
     .AddOptions<OpenIdConnectOptions>(OpenIdConnectDefaults.AuthenticationScheme)
-    .PostConfigure<TenantPolicy>((options, tenantPolicy) =>
+    .PostConfigure<TenantPolicy, TimeProvider>((options, tenantPolicy, timeProvider) =>
     {
         options.ResponseType = OpenIdConnectResponseType.Code;
         // An authorization code carrying downstream API scopes exceeds the 2048-byte IIS query string limit,
@@ -159,6 +159,18 @@ builder.Services
             {
                 context.ProtocolMessage.SetParameter("claims", claims);
             }
+
+            if (context.Properties.Items.TryGetValue(ReauthenticationPolicy.PromptItemKey, out var prompt)
+                && !string.IsNullOrEmpty(prompt))
+            {
+                context.ProtocolMessage.Prompt = prompt;
+            }
+
+            if (context.Properties.Items.TryGetValue(ReauthenticationPolicy.MaxAgeItemKey, out var maxAge)
+                && !string.IsNullOrEmpty(maxAge))
+            {
+                context.ProtocolMessage.MaxAge = maxAge;
+            }
         };
 
         var previousTokenValidated = options.Events.OnTokenValidated;
@@ -167,6 +179,19 @@ builder.Services
             await previousTokenValidated(context);
             if (context.Result?.Failure is not null)
             {
+                return;
+            }
+
+            // A provider that ignored max_age would otherwise return the same stale session and the sign-in
+            // would look successful, so the answer is measured rather than assumed.
+            if (context.Properties?.Items.TryGetValue(ReauthenticationPolicy.MaxAgeItemKey, out var requestedMaxAge) == true
+                && ReauthenticationPolicy.TryReadMaxAge(requestedMaxAge, out var maxAge)
+                && !ReauthenticationPolicy.IsAuthenticationFreshEnough(
+                    context.Principal,
+                    maxAge,
+                    timeProvider.GetUtcNow()))
+            {
+                context.Fail("Authentication was older than the requested max_age.");
                 return;
             }
 
@@ -253,7 +278,9 @@ app.MapGet("/bff/login", async (
         HttpContext context,
         ClaimsChallengeHandler challengeHandler,
         string? challengeId,
-        string? returnUrl) =>
+        string? returnUrl,
+        string? prompt,
+        string? maxAge) =>
     {
         var properties = new Microsoft.AspNetCore.Authentication.AuthenticationProperties
         {
@@ -262,6 +289,19 @@ app.MapGet("/bff/login", async (
                 ? returnUrl
                 : "/"
         };
+
+        // An unrecognised value is dropped rather than rejected: the caller still reaches sign-in, and only the
+        // freshness request it asked for is lost.
+        if (ReauthenticationPolicy.TryReadPrompt(prompt, out var resolvedPrompt))
+        {
+            properties.Items[ReauthenticationPolicy.PromptItemKey] = resolvedPrompt;
+        }
+
+        if (ReauthenticationPolicy.TryReadMaxAge(maxAge, out var resolvedMaxAge))
+        {
+            properties.Items[ReauthenticationPolicy.MaxAgeItemKey] =
+                ReauthenticationPolicy.FormatMaxAge(resolvedMaxAge);
+        }
 
         if (context.User.Identity?.IsAuthenticated == true)
         {

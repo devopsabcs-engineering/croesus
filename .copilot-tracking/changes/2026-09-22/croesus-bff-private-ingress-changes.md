@@ -842,3 +842,29 @@ Closed the code-level and deployment-level work items left open after the downst
   * This is the condition WI-27 was written for, and the new liveness check was the thing that surfaced it. The check was validated by the defect it was built to catch rather than by a contrived case.
 * `DataProtection:ProtectKeysWithDpapi` was introduced rather than removing the DPAPI call outright, so the protection remains available for a host where it is appropriate and is merely no longer the default.
 * WI-37, asserting protocol behaviour against a real identity provider, remains open. It requires a live-tenant integration harness rather than a code change, and the response-mode regression test narrows but does not close the gap it describes.
+
+## 2026-09-24: re-authentication control
+
+### Added
+
+* poc/bff-yarp-net10/Security/ReauthenticationPolicy.cs - Parses `prompt` and `maxAge` from `/bff/login` against a closed set, and checks a returned identity's `auth_time` against the requested window.
+* poc/bff-yarp-net10/Tests/ReauthenticationPolicyTests.cs - Accepted and refused values for both parameters, plus freshness evaluation including a missing `auth_time`.
+
+### Modified
+
+* poc/bff-yarp-net10/Program.cs - `/bff/login` accepts `prompt` and `maxAge`; `OnRedirectToIdentityProvider` places them on the authorize request; `OnTokenValidated` fails the sign-in when the returned `auth_time` is older than the requested `max_age`.
+* poc/bff-yarp-net10/wwwroot/index.html - Added a "Force fresh sign-in" control.
+* poc/bff-yarp-net10/wwwroot/evidence.js - The control performs a top-level navigation to `/bff/login?prompt=login&maxAge=0`.
+* poc/bff-yarp-net10/Tests/ProtocolNegativeTests.cs - Asserts the authorize request carries the accepted values and drops the rest.
+
+### Additional or Deviating Changes
+
+* The OpenID Connect handler validates `auth_time` only against its process-wide `MaxAge` option, so a per-request `max_age` would otherwise be an unenforced request.
+  * `OnTokenValidated` performs the comparison so the control is measured rather than assumed honoured.
+* A missing `auth_time` is treated as a freshness failure rather than a pass.
+  * Entra omits the claim inconsistently, and a requirement that cannot be checked has not been met.
+
+### Validation
+
+* `dotnet test` BFF: 82 passed, 0 failed.
+* Deployed to `croesus-bff-a3v24wppuvd34-bff`; root returns 200 and `/bff/login?prompt=login&maxAge=0` returns 302 carrying `prompt=login`, `max_age=0`, `response_mode=form_post`.
