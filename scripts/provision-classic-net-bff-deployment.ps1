@@ -137,7 +137,7 @@ function Assert-RegistrationPreflight {
 
     $registration = Invoke-Graph `
         -Method GET `
-        -Uri "$graphBaseUri/applications/$($ObjectId)?`$select=id,appId,signInAudience,isFallbackPublicClient,web,spa"
+        -Uri "$graphBaseUri/applications/$($ObjectId)?`$select=id,appId,signInAudience,isFallbackPublicClient,web,spa,optionalClaims"
     $observedRedirectUris = @()
     if ($null -ne $registration.web -and $null -ne $registration.web.redirectUris) {
         $observedRedirectUris = @($registration.web.redirectUris | ForEach-Object { [string]$_ })
@@ -159,6 +159,23 @@ function Assert-RegistrationPreflight {
     }
     if ($spaRedirectUris.Count -gt 0) {
         throw 'The registration exposes single-page application redirect URIs. The confidential web platform must be the only one configured.'
+    }
+
+    # A missing optional claim does not fail a sign-in, so nothing downstream reports it. It only
+    # surfaces as an evidence field that stays empty, which is indistinguishable from an
+    # authentication that genuinely carried no such value.
+    $idTokenClaims = @()
+    if ($null -ne $registration.optionalClaims -and $null -ne $registration.optionalClaims.idToken) {
+        $idTokenClaims = @($registration.optionalClaims.idToken)
+    }
+    foreach ($claimName in @('auth_time', 'amr')) {
+        if ($claimName -cnotin @($idTokenClaims | ForEach-Object { [string]$_.name })) {
+            throw "The registration does not request the '$claimName' ID token claim. The evidence surface would report it as absent."
+        }
+    }
+    $amrClaim = @($idTokenClaims | Where-Object { [string]$_.name -ceq 'amr' })[0]
+    if ('include_granular_amr' -cnotin @($amrClaim.additionalProperties | ForEach-Object { [string]$_ })) {
+        throw "The 'amr' ID token claim is requested without include_granular_amr, so Microsoft Entra ID does not emit it."
     }
 }
 
@@ -315,6 +332,19 @@ $patchBody = @{
     web = @{ redirectUris = $redirectUris }
     spa = @{ redirectUris = @() }
     isFallbackPublicClient = $false
+    # Both claims are omitted from a v2.0 ID token unless the registration asks for them, and the
+    # evidence surface reports each one as absent rather than inventing a value. auth_time carries
+    # the freshness check behind the max_age re-authentication control. amr needs
+    # include_granular_amr; without it the claim is requested but never emitted, which reads on the
+    # evidence page as an authentication method that was never reported.
+    optionalClaims = @{
+        idToken = @(
+            @{ name = 'auth_time'; source = $null; essential = $false; additionalProperties = @() }
+            @{ name = 'amr'; source = $null; essential = $false; additionalProperties = @('include_granular_amr') }
+        )
+        accessToken = @()
+        saml2Token = @()
+    }
 }
 Write-Status 'Converging the confidential web callback platform'
 Invoke-Graph -Method PATCH -Uri "$graphBaseUri/applications/$applicationObjectId" -Body $patchBody | Out-Null
