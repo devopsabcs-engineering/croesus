@@ -505,6 +505,12 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
+      - name: Record deployment start time
+        id: deploy_start
+        shell: pwsh
+        run: |
+          "utc=$([datetime]::UtcNow.ToString('o'))" >> $env:GITHUB_OUTPUT
+
       - name: Deploy .NET Framework application
         uses: azure/webapps-deploy@v3
         with:
@@ -516,6 +522,24 @@ jobs:
         with:
           app-name: ${{ steps.infrastructure.outputs.modern_app_name }}
           package: ./out/modern
+
+      # webapps-deploy reports the outcome of the upload, not of the install. A package that fails
+      # to install still leaves the action green and the previous build serving traffic, which would
+      # send the challenge-shape verification below against content that was never shipped. The Kudu
+      # deployment status is the authoritative record, and -Since rejects a run that deployed
+      # nothing at all.
+      - name: Assert deployments succeeded
+        shell: pwsh
+        env:
+          LEGACY_APP_NAME: ${{ steps.infrastructure.outputs.legacy_app_name }}
+          MODERN_APP_NAME: ${{ steps.infrastructure.outputs.modern_app_name }}
+          RESOURCE_GROUP: ${{ needs.validate.outputs.resource_group }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\scripts\assert-deployment-succeeded.ps1 `
+            -ResourceGroupName $env:RESOURCE_GROUP `
+            -AppName $env:LEGACY_APP_NAME, $env:MODERN_APP_NAME `
+            -Since '${{ steps.deploy_start.outputs.utc }}'
 
       # The same script with the full assertion set after the packages land. The pre-deployment run
       # established the environment; this one establishes that the deployed application challenges

@@ -117,6 +117,11 @@ jobs:
         run: |
           ./scripts/restore-demo-ingress.ps1 `
             -AppName '${{ env.SPA_APP_NAME }}', '${{ env.API_APP_NAME }}'
+      - name: Record deployment start time
+        id: deploy_start
+        shell: pwsh
+        run: |
+          "utc=$([datetime]::UtcNow.ToString('o'))" >> $env:GITHUB_OUTPUT
       - name: Deploy SPA
         uses: azure/webapps-deploy@v3
         with:
@@ -127,6 +132,16 @@ jobs:
         with:
           app-name: ${{ env.API_APP_NAME }}
           package: ./api-publish
+      # webapps-deploy reports the outcome of the upload, not of the install. A package that fails
+      # to install still leaves the action green and the previous build serving traffic, so every
+      # later check passes against content that was never shipped. The Kudu deployment status is
+      # the authoritative record, and -Since rejects a run that deployed nothing at all.
+      - name: Assert deployments succeeded
+        shell: pwsh
+        run: |
+          ./scripts/assert-deployment-succeeded.ps1 `
+            -AppName '${{ env.SPA_APP_NAME }}', '${{ env.API_APP_NAME }}' `
+            -Since '${{ steps.deploy_start.outputs.utc }}'
       - name: Publish API surface (Swagger / OpenAPI) to run summary
         shell: bash
         run: |
