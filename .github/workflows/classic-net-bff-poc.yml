@@ -78,10 +78,10 @@ jobs:
       resource_group: ${{ steps.inputs.outputs.resource_group }}
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up .NET 10
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
 
@@ -166,7 +166,7 @@ jobs:
 
       - name: Upload reference BFF test results
         if: always() && steps.bff_tests.outcome != 'skipped'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bff-test-results-${{ github.run_id }}
           path: ${{ runner.temp }}/bff-test-results
@@ -229,7 +229,7 @@ jobs:
 
       - name: Azure login for optional validation what-if
         if: env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != ''
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ env.AZURE_CLIENT_ID }}
           tenant-id: ${{ env.AZURE_TENANT_ID }}
@@ -279,7 +279,7 @@ jobs:
           "Validation what-if completed for resource group ``$env:RESOURCE_GROUP``." >> $env:GITHUB_STEP_SUMMARY
 
       - name: Upload secret-free application packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: classic-net-bff-packages-${{ github.run_id }}
           path: |
@@ -332,16 +332,16 @@ jobs:
     # no private DNS zone, VNet, subnet, or resource group that other workloads depend on.
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download secret-free application packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: classic-net-bff-packages-${{ github.run_id }}
           path: ./out
 
       - name: Azure login with OIDC
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ env.AZURE_CLIENT_ID }}
           tenant-id: ${{ env.AZURE_TENANT_ID }}
@@ -893,7 +893,7 @@ jobs:
           "@ >> $env:GITHUB_STEP_SUMMARY
 
       - name: Upload evidence verdict artefact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: evidence-verdicts-${{ github.run_id }}
           path: ${{ steps.verdicts.outputs.report_path }}
