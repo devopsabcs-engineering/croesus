@@ -38,8 +38,8 @@ jobs:
     name: Build SPA
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -65,7 +65,7 @@ jobs:
         run: |
           npm ci
           npm run build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: spa
           path: ./spa/dist
@@ -74,13 +74,13 @@ jobs:
     name: Build API
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 8.0.x
       - name: Publish API
         run: dotnet publish api/Croesus.Api.csproj -c Release -o ./api-publish
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: api
           path: ./api-publish
@@ -95,21 +95,21 @@ jobs:
       # would otherwise delete them. Only the scripts directory is needed; the deployable payloads
       # arrive as artifacts from the build jobs.
       - name: Checkout deployment scripts
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           sparse-checkout: scripts
       - name: Download SPA artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: spa
           path: ./spa-dist
       - name: Download API artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: api
           path: ./api-publish
       - name: Azure login (OIDC, no stored secret)
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ env.AZURE_CLIENT_ID }}
           tenant-id: ${{ env.AZURE_TENANT_ID }}
@@ -185,11 +185,11 @@ jobs:
       TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
       EVIDENCE_FILE: obo-evidence.md
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Stamp evidence run (UTC)
         run: echo "EVIDENCE_STAMP=$(date -u +%Y%m%dT%H%M%SZ)" >> "$GITHUB_ENV"
       - name: Azure login (OIDC, no stored secret)
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -274,7 +274,7 @@ jobs:
           } | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
       - name: Upload claim summary artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: obo-evidence-${{ env.EVIDENCE_STAMP }}
           path: ${{ env.EVIDENCE_FILE }}
@@ -300,11 +300,11 @@ jobs:
       WORKSPACE_ID: ${{ vars.LOG_ANALYTICS_WORKSPACE_ID }}
       EVIDENCE_FILE: tier2-replay-evidence.md
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Stamp evidence run (UTC)
         run: echo "EVIDENCE_STAMP=$(date -u +%Y%m%dT%H%M%SZ)" >> "$GITHUB_ENV"
       - name: Azure login (OIDC, no stored secret)
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -392,7 +392,7 @@ jobs:
             | tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
       - name: Upload Tier 2 replay evidence artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tier2-replay-evidence-${{ env.EVIDENCE_STAMP }}
           path: ${{ env.EVIDENCE_FILE }}
