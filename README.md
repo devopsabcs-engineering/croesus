@@ -6,6 +6,9 @@ There are two entry points. For the running proof of the Backend-for-Frontend sh
 
 Q8 and Q15 both turn on a single question: does the browser ever hold an OAuth token, or does a backend redeem the code, retain the tokens, and mediate every downstream call? Croesus asserts the second shape. Rather than argue the shape in the abstract, this repository deploys a working instance of it and produces evidence from two independent vantage points.
 
+> [!TIP]
+> **Screenshot walkthrough:** the [BFF demo walkthrough on the wiki](https://github.com/devopsabcs-engineering/croesus/wiki/BFF-Demo-Walkthrough) shows every step below with screenshots of the Azure resources, both Entra app registrations, the App Service settings, the sign-in, and the Azure Monitor telemetry. Background reading: [Backends for Frontends pattern - Azure Architecture Center](https://learn.microsoft.com/en-us/azure/architecture/patterns/backends-for-frontends) and [Secure an ASP.NET Core Blazor Web App with OpenID Connect (OIDC)](https://learn.microsoft.com/en-us/aspnet/core/blazor/security/blazor-web-app-with-oidc?view=aspnetcore-10.0&pivots=with-yarp-and-aspire).
+
 Every step below has been executed against live Microsoft Entra in the PoC tenant `MngEnvMCAP675646`. The negative controls are part of the demonstration, not an afterthought: an assertion that survives only because nothing was ever tested is not evidence.
 
 ### What is deployed
