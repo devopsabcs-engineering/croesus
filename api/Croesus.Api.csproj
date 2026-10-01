@@ -17,8 +17,8 @@
       turns on the On-Behalf-Of machinery, and AddMicrosoftGraph performs the OBO + Graph /me call.
       There is no code path that forwards the inbound token to Graph (no replay anti-pattern).
     -->
-    <PackageReference Include="Microsoft.Identity.Web" Version="4.11.0" />
-    <PackageReference Include="Microsoft.Identity.Web.MicrosoftGraph" Version="4.11.0" />
+    <PackageReference Include="Microsoft.Identity.Web" Version="4.15.0" />
+    <PackageReference Include="Microsoft.Identity.Web.MicrosoftGraph" Version="4.15.0" />
     <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" Version="2.22.0" />
     <!-- Swagger / OpenAPI (Swashbuckle) exposes an interactive UI at /swagger and the
          OpenAPI document at /swagger/v1/swagger.json so the API surface is visible. -->
